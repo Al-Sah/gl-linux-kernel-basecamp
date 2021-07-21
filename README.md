@@ -28,6 +28,8 @@ Subtask completed.
 
 Subtask: Update user input
 
+Script: Update first param handling
+
 Subtask completed.
 
 ---

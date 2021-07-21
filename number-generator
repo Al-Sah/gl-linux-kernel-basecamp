@@ -1,11 +1,14 @@
 #! /bin/bash
 
+user_number=()
+
 if [ $# -eq 0 ]; then
-	echo "ERROR" 
-	exit
+	read -p "Enter number: " user_number 
+else
+	user_number=$1
 fi
 
-user_number=$1
+
 random_number=()
 
 get_random_number(){
