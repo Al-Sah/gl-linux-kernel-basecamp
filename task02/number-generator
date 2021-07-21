@@ -3,28 +3,31 @@
 user_number=()
 
 if [ $# -eq 0 ]; then
-	read -p "Enter number: " user_number 
+	read -p "Enter number to compare: " user_number 
 else
 	user_number=$1
 fi
 
 
 if [ $# -lt 2 ]; then
-	echo "ERROR"
-	exit
-	if [ $2 -lt 1 -o $2 -gt 100 ];then
-	echo "ERROR"
-	exit
-	fi
+	read -p "Enter upper range limit (1 - 100): " upper_range_limit 
+else
+	upper_range_limit=$2
 fi
 
-upper_range_limit=$2
+
+if [ $upper_range_limit -lt 1 ] || [ $upper_range_limit -gt 100 ];then
+	echo "ERROR"; exit
+fi
+
+
 
 
 random_number=()
 
 get_random_number(){
 	random_number=$(($RANDOM % $upper_range_limit))
+	echo "generated number $random_number" 
 }
 
 compare(){
