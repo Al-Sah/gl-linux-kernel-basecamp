@@ -1,7 +1,19 @@
 #! /bin/bash
 
-print_random_number(){
-	echo $(($RANDOM % 6))
+if [ $# -eq 0 ]; then
+	echo "ERROR" 
+	exit
+fi
+
+
+
+user_number=$1
+random_number=()
+
+get_random_number(){
+random_number=$(($RANDOM % 6))
 }
 
-print_random_number
+get_random_number
+
+
