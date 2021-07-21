@@ -1,3 +1,7 @@
 #! /bin/bash
 
-echo $(($RANDOM % 6))
+print_random_number(){
+	echo $(($RANDOM % 6))
+}
+
+print_random_number
