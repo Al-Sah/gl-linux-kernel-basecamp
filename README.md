@@ -15,3 +15,6 @@ Random: Implement new function
 Subtask completed.
 
 ---
+
+Subtask: add comparison of the randomly generated number X with the input number Y
+
