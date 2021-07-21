@@ -25,3 +25,5 @@ Script: Add function compare
 Subtask completed.
 
 ---
+
+Subtask: Update user input
