@@ -9,10 +9,22 @@ else
 fi
 
 
+if [ $# -lt 2 ]; then
+	echo "ERROR"
+	exit
+	if [ $2 -lt 1 -o $2 -gt 100 ];then
+	echo "ERROR"
+	exit
+	fi
+fi
+
+upper_range_limit=$2
+
+
 random_number=()
 
 get_random_number(){
-	random_number=$(($RANDOM % 6))
+	random_number=$(($RANDOM % $upper_range_limit))
 }
 
 compare(){
