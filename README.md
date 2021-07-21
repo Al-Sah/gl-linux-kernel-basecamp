@@ -33,3 +33,5 @@ Script: Update first param handling
 Subtask completed.
 
 ---
+
+Subtask: Handle second param
