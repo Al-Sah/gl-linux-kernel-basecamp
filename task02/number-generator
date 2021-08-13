@@ -1,15 +1,17 @@
 #! /bin/bash
 
-if [ $# -eq 0 ]; then
-	read -rp "Enter number to compare: " user_number
-else
-	user_number=$1
-fi
 
 if [ $# -lt 2 ]; then
 	read -rp "Enter upper range limit (1 - 100): " upper_range_limit
 else
 	upper_range_limit=$2
+fi
+echo "Random number in range (0-$upper_range_limit)"
+
+if [ $# -eq 0 ]; then
+	read -rp "Enter number to compare: " user_number
+else
+	user_number=$1
 fi
 
 
@@ -36,11 +38,11 @@ get_random_number(){
 
 compare(){
 if [ $random_number -gt "$user_number" ]; then
-	echo "$random_number is greater than $user_number"
+	echo "randomly generated number is greater than $user_number"
 elif [ $random_number -lt "$user_number" ]; then
-	echo "$random_number is less than $user_number"
+	echo "randomly generated number is less than $user_number"
 else
-	echo "$random_number is equal to $user_number"
+	echo "randomly generated number is equal to $user_number"
 fi
 }
 
