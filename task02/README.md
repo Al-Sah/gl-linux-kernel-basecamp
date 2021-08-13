@@ -47,3 +47,8 @@ Subtask: Update second param handling
 Script: Update 2nd param handling
 
 Subtask completed.
+
+---
+
+Subtask: Provide the number of guessing attempts as the 3d param
+
