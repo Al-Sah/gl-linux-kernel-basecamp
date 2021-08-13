@@ -62,6 +62,8 @@ Subtask completed.
 
 Subtask: Provide user input for the number of guessing attempts
 
+Subtask: Add user input for guessing tries 
+
 Subtask completed.
 
 ---

@@ -16,7 +16,7 @@ fi
 if [ $# -eq 3 ]; then
   guessing_tries=$3
   else
-    echo "ERROR"; exit
+    read -rp "Enter guessing tries: " guessing_tries
 fi
 
 
