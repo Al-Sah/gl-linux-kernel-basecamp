@@ -44,4 +44,6 @@ Subtask completed.
 
 Subtask: Update second param handling
 
+Script: Update 2nd param handling
 
+Subtask completed.
