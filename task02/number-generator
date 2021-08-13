@@ -1,19 +1,24 @@
 #! /bin/bash
 
-user_number=()
-
 if [ $# -eq 0 ]; then
 	read -rp "Enter number to compare: " user_number
 else
 	user_number=$1
 fi
 
-
 if [ $# -lt 2 ]; then
 	read -rp "Enter upper range limit (1 - 100): " upper_range_limit
 else
 	upper_range_limit=$2
 fi
+
+
+if [ $# -eq 3 ]; then
+  guessing_tries=$3
+  else
+    echo "ERROR"; exit
+fi
+
 
 
 if [ "$upper_range_limit" -lt 1 ] || [ "$upper_range_limit" -gt 100 ]; then
@@ -42,3 +47,11 @@ fi
 
 get_random_number
 compare
+
+counter=1
+
+while [ $counter -lt "$guessing_tries" ]; do
+    read -rp "Enter number to compare: " user_number
+    compare
+    ((counter++))
+done

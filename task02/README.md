@@ -52,6 +52,10 @@ Subtask completed.
 
 Subtask: Provide the number of guessing attempts as the 3d param
 
+Subtask: Add loop for the guessing tries 
+
+Subtask: Add 3d param handling 
+
 Subtask completed.
 
 ---
