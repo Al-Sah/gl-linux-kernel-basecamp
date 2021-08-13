@@ -47,3 +47,11 @@ fi
 
 get_random_number
 compare
+
+counter=1
+
+while [ $counter -lt "$guessing_tries" ]; do
+    read -rp "Enter number to compare: " user_number
+    compare
+    ((counter++))
+done
