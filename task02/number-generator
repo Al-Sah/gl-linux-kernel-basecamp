@@ -29,31 +29,33 @@ fi
 
 
 random_number=""
-
 get_random_number(){
 	random_number=$((RANDOM % upper_range_limit))
 	echo "generated number $random_number" 
 }
 
-
+is_guessed=0
 compare(){
 if [ $random_number -gt "$user_number" ]; then
 	echo "randomly generated number is greater than $user_number"
 elif [ $random_number -lt "$user_number" ]; then
 	echo "randomly generated number is less than $user_number"
 else
-	echo "randomly generated number is equal to $user_number"
+  is_guessed=1
+	echo " Bingo !!! Randomly generated number is $user_number"
 fi
 }
-
 
 get_random_number
 compare
 
-counter=1
 
+counter=1
 while [ $counter -lt "$guessing_tries" ]; do
-    read -rp "Enter number to compare: " user_number
-    compare
-    ((counter++))
+  if [ $is_guessed = 1 ]; then
+    break
+  fi
+  read -rp "Enter number to compare: " user_number
+  compare
+  ((counter++))
 done
