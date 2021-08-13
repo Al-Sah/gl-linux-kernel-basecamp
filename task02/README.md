@@ -59,3 +59,6 @@ Subtask: Add 3d param handling
 Subtask completed.
 
 ---
+
+Subtask: Provide user input for the number of guessing attempts
+
