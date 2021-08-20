@@ -1,24 +1,26 @@
 #! /bin/bash
 
 
-if [ $# -lt 2 ]; then
-	read -rp "Enter upper range limit (1 - 100): " upper_range_limit
-else
-	upper_range_limit=$2
-fi
-echo "Random number in range 0 - $upper_range_limit"
+options=$(getopt -l "upper:,retries:" -o "u:r:" -- "$@")
+eval set -- "$options"
+echo "Options $options"
 
+upper_range_limit=100
+guessing_tries=3
 
-if [ $# -eq 3 ]; then
-  guessing_tries=$3
-  else
-    read -rp "Enter guessing tries: " guessing_tries
-fi
+while true; do
+  case $1 in
+  -u|--upper) shift; upper_range_limit=$1 ;;
+  -r|--retries) shift; guessing_tries=$1 ;;
+  --) shift; break ;;
+  esac
+  shift
+done
 
 if [ $# -eq 0 ]; then
-	read -rp "Enter number to compare: " user_number
-else
-	user_number=$1
+  read -rp "Your number: " user_number
+  else
+  user_number=$1
 fi
 
 
