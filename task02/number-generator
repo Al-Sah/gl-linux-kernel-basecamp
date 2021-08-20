@@ -1,12 +1,23 @@
 #! /bin/bash
 
+upper_range_limit=100
+guessing_tries=3
+user_number=0
+random_number=0
+
+get_user_number(){
+  local un
+  read -rp "Enter your number: " un
+  until [[ $upper_range_limit =~ ^[0-9]+$ ]]; do
+      read -rp "error: ""$un""cannot be type of int. Try again: " un
+  done
+  user_number=$un
+}
 
 options=$(getopt -l "upper:,retries:" -o "u:r:" -- "$@")
 eval set -- "$options"
 echo "Options $options"
 
-upper_range_limit=100
-guessing_tries=3
 
 while true; do
   case $1 in
@@ -17,22 +28,34 @@ while true; do
   shift
 done
 
-if [ $# -eq 0 ]; then
-  read -rp "Your number: " user_number
-  else
+until [[ $upper_range_limit =~ ^[0-9]+$ ]] && ((upper_range_limit >= 1 && upper_range_limit <= 100)); do
+  echo "$upper_range_limit is not in range from 1 to 100"
+  read -rp "Enter upper range limit number (1-100): " upper_range_limit
+  if [[ $upper_range_limit =~ ^[0-9]+$ ]] && ((upper_range_limit >= 1 && upper_range_limit <= 100)); then
+    break
+  fi
+done
+
+until [[ $guessing_tries =~ ^[0-9]+$ ]] && ((guessing_tries >= 1 && guessing_tries <= 20)); do
+  echo "$guessing_tries is not appropriate for the guessing tries. "
+  echo "Enter number in range from 1 to 20"
+  read -rp "Enter upper range limit number (1-100): " guessing_tries
+  if [[ $guessing_tries =~ ^[0-9]+$ ]] && ((guessing_tries >= 1 && guessing_tries <= 20)); then
+    break
+  fi
+done
+
+
+if [[ $# -ge 1 ]] && [[ $1 =~ ^[0-9]+$ ]]; then
   user_number=$1
+  shift
+  else get_user_number
 fi
 
 
-
-if [ "$upper_range_limit" -lt 1 ] || [ "$upper_range_limit" -gt 100 ]; then
-	echo "ERROR"; exit
-fi
-
-
-random_number=""
 get_random_number(){
 	random_number=$((RANDOM % upper_range_limit))
+	echo "Generated random number in range [0-$upper_range_limit]"
 }
 
 
@@ -53,21 +76,21 @@ get_random_number
 compare
 
 repeat="1"
-while [ $repeat -eq "1" ]; do
+while [ "$repeat" == "1" ]; do
 
   counter=1
   while [ $counter -lt "$guessing_tries" ]; do
     if [ $is_guessed = 1 ]; then
       break
     fi
-    read -rp "Enter number to compare: " user_number
+    get_user_number
     compare
     ((counter++))
   done
 
-  if [ $is_guessed == "1" ]; then
-    read -rp "Play again ? ( 1-yes, 0-no ): " repeat
+  if [ "$is_guessed" == "1" ]; then
+    read -rp "Play again? - Print \"1\": " repeat
     counter=1
-    is_guessed=1
+    is_guessed=0
   fi
 done
