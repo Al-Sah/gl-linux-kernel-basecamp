@@ -75,3 +75,9 @@ Subtask: Add possibility to repeat game
 Subtask completed.
 
 ---
+
+
+### Extra
+
+Subtask: Implement setting up local variables with a help of script flags. 
+
