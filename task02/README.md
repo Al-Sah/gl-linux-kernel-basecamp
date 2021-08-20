@@ -67,3 +67,11 @@ Subtask: Add user input for guessing tries
 Subtask completed.
 
 ---
+
+Subtask: Add possibility to play again
+
+Subtask: Add possibility to repeat game
+
+Subtask completed.
+
+---
