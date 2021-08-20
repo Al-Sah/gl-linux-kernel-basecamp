@@ -88,3 +88,6 @@ Extra subtask: Add script flags handling
 Subtask completed.
 
 ---
+
+Extra subtask: Implement user menu
+
