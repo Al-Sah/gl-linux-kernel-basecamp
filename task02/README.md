@@ -79,5 +79,12 @@ Subtask completed.
 
 ### Extra
 
-Subtask: Implement setting up local variables with a help of script flags. 
+Extra subtask: Implement setting up local variables with a help of script flags.
 
+Extra subtask: Add variables validation 
+
+Extra subtask: Add script flags handling
+
+Subtask completed.
+
+---
