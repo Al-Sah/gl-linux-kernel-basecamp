@@ -1,5 +1,24 @@
 #!/bin/bash
 
+led_pins=(20 21 16)
+finish_script=0
+
+run_led_blinking(){
+  echo "$$ $!"
+  local current_active=0
+  until (( finish_script == 1 )); do
+    
+    for (( i = 0; i < 3; i++ )); do
+      if (( current_active == i )); then
+        echo 1 > /sys/class/gpio/gpio"${led_pins[$i]}"/value
+      else
+        echo 0 > /sys/class/gpio/gpio"${led_pins[$i]}"/value
+      fi
+    done
+    if (( current_active == 2 )); then current_active=0; else ((current_active++)); fi
+    sleep 0.5
+  done
+}
 
 setup_button(){
   if [ -e "/sys/class/gpio/gpio26" ]; then echo 26 > /sys/class/gpio/unexport; fi
@@ -49,10 +68,11 @@ done
 setup_led
 sleep 1
 
-led_pins=(16 20 21)
 current_button_state=0
 previous_button_state=0
 duration=0
+
+run_led_blinking
 
 while true; do
 	current_button_state=$(cat /sys/class/gpio/gpio26/value)
@@ -60,13 +80,14 @@ while true; do
 	  if ((previous_button_state == 0)); then
 	    previous_button_state=1
 	    if (( led_pins[0] == 16)); then
-	        led_pins=(21 20 16)
+	        export led_pins=(20 21 16)
 	      else
-	        led_pins=(16 20 21)
+	        export led_pins=(16 21 20)
 	      fi
     else
       ((duration++))
       if (( duration >= 20 )); then
+        export finish_script=1
         break;
       fi
     fi
