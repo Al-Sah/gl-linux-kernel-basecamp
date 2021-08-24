@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [ -f "/sys/class/gpio/gpio26" ]; then
-    echo " GPIO26 is active ! "
+if [ -e "/sys/class/gpio/gpio26" ]; then
+    echo "GPIO26 was active ! "
     echo 26 > /sys/class/gpio/unexport
 fi
 
