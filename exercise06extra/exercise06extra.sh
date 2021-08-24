@@ -46,10 +46,36 @@ while true; do
 	if (( 1 == $(cat /sys/class/gpio/gpio26/value) )); then break; fi
 	sleep 0.05
 done
-
 setup_led
 sleep 1
 
+led_pins=(16 20 21)
+current_button_state=0
+previous_button_state=0
+duration=0
+
+while true; do
+	current_button_state=$(cat /sys/class/gpio/gpio26/value)
+	if (( current_button_state == 1)); then
+	  if ((previous_button_state == 0)); then
+	    previous_button_state=1
+	    if (( led_pins[0] == 16)); then
+	        led_pins=(21 20 16)
+	      else
+	        led_pins=(16 20 21)
+	      fi
+    else
+      ((duration++))
+      if (( duration >= 20 )); then
+        break;
+      fi
+    fi
+	else
+	  duration=0
+	  previous_button_state=0
+	fi
+	sleep 0.05
+done
 
 echo 26 > /sys/class/gpio/unexport
 shutdown_led
