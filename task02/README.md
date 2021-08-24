@@ -42,3 +42,53 @@ Subtask completed.
 
 ---
 
+Subtask: Update second param handling
+
+Script: Update 2nd param handling
+
+Subtask completed.
+
+---
+
+Subtask: Provide the number of guessing attempts as the 3d param
+
+Subtask: Add loop for the guessing tries 
+
+Subtask: Add 3d param handling 
+
+Subtask completed.
+
+---
+
+Subtask: Provide user input for the number of guessing attempts
+
+Subtask: Add user input for guessing tries 
+
+Subtask completed.
+
+---
+
+Subtask: Add possibility to play again
+
+Subtask: Add possibility to repeat game
+
+Subtask completed.
+
+---
+
+
+### Extra
+
+Extra subtask: Implement setting up local variables with a help of script flags.
+
+Extra subtask: Add variables validation 
+
+Extra subtask: Add script flags handling
+
+Subtask completed.
+
+---
+
+Extra subtask: Implement user menu
+
+Extra subtask: Finished 
