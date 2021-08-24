@@ -14,6 +14,8 @@ echo "GPIO26 is ready !!"
 current_state=0
 previous_state=0
 times=0
+duration=0
+
 
 while true; do
 	current_state=$(cat /sys/class/gpio/gpio26/value)
@@ -22,9 +24,17 @@ while true; do
 	    previous_state=1
 	    ((times++))
       echo "Clicked times $times"
-	  fi
+    else
+      ((duration++))
+      if (( duration >= 20 )); then
+        break;
+      fi
+    fi
 	else
+	  duration=0
 	  previous_state=0
 	fi
 	sleep 0.05
 done
+
+echo 26 > /sys/class/gpio/unexport
