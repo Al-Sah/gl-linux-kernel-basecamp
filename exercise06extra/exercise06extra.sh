@@ -1,13 +1,9 @@
 #!/bin/bash
 
-led_pins=(20 21 16)
-finish_script=0
-
 run_led_blinking(){
-  echo "$$ $!"
+  local led_pins=("$@")
   local current_active=0
-  until (( finish_script == 1 )); do
-    
+  while true; do
     for (( i = 0; i < 3; i++ )); do
       if (( current_active == i )); then
         echo 1 > /sys/class/gpio/gpio"${led_pins[$i]}"/value
@@ -71,23 +67,29 @@ sleep 1
 current_button_state=0
 previous_button_state=0
 duration=0
+blinking_state=0
+pid=""
 
-run_led_blinking
+run_led_blinking 16 21 20 &
+pid=$!
 
 while true; do
 	current_button_state=$(cat /sys/class/gpio/gpio26/value)
 	if (( current_button_state == 1)); then
 	  if ((previous_button_state == 0)); then
 	    previous_button_state=1
-	    if (( led_pins[0] == 16)); then
-	        export led_pins=(20 21 16)
-	      else
-	        export led_pins=(16 21 20)
-	      fi
+
+      kill "$pid" > /dev/null 2>&1
+	    if (( blinking_state == 0 )); then
+	      blinking_state=1; run_led_blinking 20 21 16 &
+	    else
+	      blinking_state=0; run_led_blinking 16 21 20 &
+	    fi
+	    pid=$!
+
     else
       ((duration++))
       if (( duration >= 20 )); then
-        export finish_script=1
         break;
       fi
     fi
@@ -98,5 +100,6 @@ while true; do
 	sleep 0.05
 done
 
+kill "$pid" > /dev/null 2>&1
 echo 26 > /sys/class/gpio/unexport
 shutdown_led
