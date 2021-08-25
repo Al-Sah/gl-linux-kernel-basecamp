@@ -11,13 +11,24 @@ current_state=0
 previous_state=0
 duration=0
 
+time=""
+
+get_time(){
+  local hour="$(i2cget -y 1 0x68 0x02)"
+  local min=$(i2cget -y 1 0x68 0x01)
+  local sec=$(i2cget -y 1 0x68 0x00)
+  time="$hour:$min:$sec"
+}
+
 while true; do
 	current_state=$(cat /sys/class/gpio/gpio26/value)
 	if (( current_state == 1)); then
 	  if ((previous_state == 0)); then
 	    previous_state=1
-	    echo "Time: $(i2cget -y 1 0x68 0x02) $(i2cget -y 1 0x68 0x01) $(i2cget -y 1 0x68 0x00)"
-	    echo "Temperature: $(i2cget -y 1 0x68 0x11)"; echo ""
+	    get_time
+	    echo "Time: $time" | sed 's/0x//g'
+	    echo "Temperature: $(($(i2cget -y 1 0x68 0x11))).$(($(i2cget -y 1 0x68 0x12)))"; echo ""
+
     else
       ((duration++))
       if (( duration >= 20 )); then
