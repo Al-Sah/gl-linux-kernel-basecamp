@@ -14,10 +14,7 @@ duration=0
 time=""
 
 get_time(){
-  local hour="$(i2cget -y 1 0x68 0x02)"
-  local min=$(i2cget -y 1 0x68 0x01)
-  local sec=$(i2cget -y 1 0x68 0x00)
-  time="$hour:$min:$sec"
+  time="$(i2cget -y 1 0x68 0x02):$(i2cget -y 1 0x68 0x01):$(i2cget -y 1 0x68 0x00)"
 }
 
 while true; do
