@@ -1,0 +1,14 @@
+#!/usr/bin/python
+import RPi.GPIO as GPIO
+
+GPIO_PIN_NUMBER = 18
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(GPIO_PIN_NUMBER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+GPIO_PIN_NUMBER = 23
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(GPIO_PIN_NUMBER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+GPIO_PIN_NUMBER = 24
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(GPIO_PIN_NUMBER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
