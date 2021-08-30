@@ -7,6 +7,7 @@
 #include <sys/ioctl.h>
 #include <linux/types.h>
 #include <linux/spi/spidev.h>
+#include <string.h>
 #include "ili9341.h"
 #include "fonts.h"
 
@@ -368,6 +369,21 @@ static void lcd_put_char(uint16_t x, uint16_t y, char ch, FontDef font, uint16_t
 	}
 }
 
+static void lcd_put_str(uint16_t x, uint16_t y, const char *ch, FontDef font, uint16_t color, uint16_t bg_color)
+{
+    uint16_t tmp = x;
+    for (int i = 0; i < strlen(ch); ++i) {
+        lcd_put_char(x, y, ch[i], font, color, bg_color);
+        x+=font.width;
+        if( x >= 305){
+            x = tmp;
+            y += font.height;
+        }
+
+    }
+}
+
+
 
 int main(int argc, char *argv[]) {
 	int ret = 0;
@@ -409,8 +425,13 @@ int main(int argc, char *argv[]) {
 	lcd_set_address_window(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
 
 	lcd_fill_screen(COLOR_BLUE);
-	lcd_put_char(10, 10, 'A', Font_11x18, COLOR_RED, COLOR_BLACK);
-	lcd_update_screen();
+
+
+    lcd_put_str(20, 30, " Hi raspberry! ", Font_11x18, COLOR_RED, COLOR_BLACK);
+
+
+
+    lcd_update_screen();
 
 	sleep(2);
 
