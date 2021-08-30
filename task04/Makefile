@@ -24,3 +24,6 @@ $(BIN_DIR)/%.o: $(SRC_DIR)/%.c
 clean:
 	rm -rf $(BIN_DIR)/$(TARGET) $(BIN_DIR)/*.o
 	@echo "Cleanup complete!"
+
+update_on_pi:
+	scp src/main.c pi@192.168.77.153:led/src/main.c
