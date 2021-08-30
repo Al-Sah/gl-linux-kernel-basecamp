@@ -10,6 +10,7 @@
 #include <linux/spi/spidev.h>
 #include <string.h>
 #include <time.h>
+#include <stdbool.h>
 #include "ili9341.h"
 #include "fonts.h"
 
@@ -112,7 +113,6 @@ static int gpio_get_value(unsigned int gpio) {
         fread(data_buffer, sizeof(char), 4, file);
         fclose(file);
     }
-    printf(" (GPIO %d) Data buffer: %s", gpio, data_buffer);
     return (int) strtol(data_buffer, (char **)NULL, 10);
 }
 
@@ -430,6 +430,53 @@ char* get_time(){
     return time_str;
 }
 
+int counter = 0;
+struct timeval current;
+size_t stop;
+int previous_state[] = {1, 1, 1};
+char state[3] = "--";
+int current_state[] = {1, 1, 1};
+
+
+void process_buttons_values(void){
+
+    current_state[0] = gpio_get_value(18);
+    current_state[1] = gpio_get_value(23);
+    current_state[2] = gpio_get_value(24);
+
+    if(current_state[0] == 0 ){
+        if(previous_state[0] == 1){
+            previous_state[0] = 0;
+            counter++;
+            sprintf(state, "%d", counter);
+        }
+    } else { previous_state[0] = 1; }
+
+    if(current_state[1] == 0 ){
+        if(previous_state[1] == 1){
+            previous_state[1] = 0;
+            counter--;
+            sprintf(state, "%d", counter);
+        }
+    } else { previous_state[1] = 1; }
+
+    if(current_state[2] == 0 ){
+        if(previous_state[2] == 1){
+            previous_state[2] = 0;
+            counter=0;
+            sprintf(state, "%d", counter);
+            gettimeofday(&current, NULL);
+            stop = current.tv_sec+2;
+        } else {
+            gettimeofday(&current, NULL);
+            if (current.tv_sec >= stop){
+                stop=1;
+            }
+        }
+    } else {
+        previous_state[2] = 1;
+    }
+}
 
 int main(int argc, char *argv[]) {
 	int ret = 0;
@@ -482,14 +529,21 @@ int main(int argc, char *argv[]) {
     gpio_get_value(23);
     gpio_get_value(24);
 
-    lcd_put_str(80, 10, get_ip(),   Font_11x18, COLOR_RED, COLOR_BLACK);
-    lcd_put_str(60, 50, get_time(), Font_11x18, COLOR_RED, COLOR_BLACK);
+    lcd_put_str(90, LCD_HEIGHT-30, get_ip(),   Font_11x18, COLOR_RED, COLOR_BLACK);
 
+    while (stop != 1){
+        process_buttons_values();
+        lcd_put_str(60, 35, get_time(), Font_11x18, COLOR_RED, COLOR_BLACK);
+        lcd_put_str(LCD_WIDTH/2-20, LCD_HEIGHT/2, "   ", Font_11x18, COLOR_RED, COLOR_BLACK);
+        lcd_put_str(LCD_WIDTH/2-20, LCD_HEIGHT/2, state, Font_11x18, COLOR_RED, COLOR_BLACK);
+        lcd_update_screen();
+        usleep(10000);
+    }
 
+    lcd_fill_screen(COLOR_GREEN);
+    lcd_put_str(LCD_WIDTH/2-30, LCD_HEIGHT/2, "Bye !", Font_11x18, COLOR_RED, COLOR_BLACK);
     lcd_update_screen();
-
-	sleep(2);
-
+    sleep(1);
 	close(fd);
 
 	gpio_free(GPIO_PIN_RESET);
