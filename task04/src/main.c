@@ -5,9 +5,11 @@
 #include <getopt.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
 #include <linux/types.h>
 #include <linux/spi/spidev.h>
 #include <string.h>
+#include <time.h>
 #include "ili9341.h"
 #include "fonts.h"
 
@@ -30,7 +32,7 @@ static uint16_t delay = 0;
 uint16_t frame_buffer[LCD_WIDTH * LCD_HEIGHT];
 int fd;
 
-static int gpio_init(unsigned int gpio) {
+static int gpio_init(unsigned int gpio, const char* direction)  {
 	int fd, len;
 	char buf[BUF_SIZE];
 
@@ -51,7 +53,7 @@ static int gpio_init(unsigned int gpio) {
 		return fd;
  	}
 	
-	write (fd, "out", sizeof("out"));
+	write (fd, direction, sizeof(direction));
 	close (fd);
 
 	return 0;
@@ -95,6 +97,23 @@ static int gpio_set_value(unsigned int gpio, unsigned int value) {
 
 	close (fd);
  	return 0;
+}
+
+static int gpio_get_value(unsigned int gpio) {
+
+    char buf[BUF_SIZE];
+    snprintf (buf, sizeof(buf), GPIO_DIR "/gpio%d/value", gpio);
+
+    char data_buffer[4];
+    FILE *file = fopen(buf, "r");
+    if (file == NULL) {
+        strcpy(data_buffer, "-1");
+    } else {
+        fread(data_buffer, sizeof(char), 4, file);
+        fclose(file);
+    }
+    printf(" (GPIO %d) Data buffer: %s", gpio, data_buffer);
+    return (int) strtol(data_buffer, (char **)NULL, 10);
 }
 
 static void lcd_reset(void) {
@@ -383,15 +402,48 @@ static void lcd_put_str(uint16_t x, uint16_t y, const char *ch, FontDef font, ui
     }
 }
 
+static char* get_ip(){
+    static char buffer[14];
+    FILE *file = fopen("ip.txt", "r");
+    if (file == NULL) {
+        strcpy(buffer, "  No ip.txt  ");
+    } else {
+        fread(buffer, sizeof(char), 14, file);
+        fclose(file);
+    }
+    return buffer;
+}
+
+char* get_time(){
+    static size_t seconds_last = 99;
+    static char time_str[24];
+
+    struct timeval current_time;
+
+    gettimeofday(&current_time, NULL);
+    if (seconds_last == current_time.tv_sec)
+        strcpy(time_str, "Failed to get time_str");
+
+    seconds_last = current_time.tv_sec;
+    strftime(time_str, 80, "%Y-%m-%d %H:%M:%S", localtime(&current_time.tv_sec));
+
+    return time_str;
+}
 
 
 int main(int argc, char *argv[]) {
 	int ret = 0;
-	
 
-	gpio_init(GPIO_PIN_RESET);
-	gpio_init(GPIO_PIN_DC);
-	gpio_init(GPIO_PIN_CS);
+
+    gpio_init(GPIO_PIN_RESET, "out");
+    gpio_init(GPIO_PIN_DC, "out");
+    gpio_init(GPIO_PIN_CS, "out");
+
+    gpio_init(18, "in");
+    gpio_init(23, "in");
+    gpio_init(24, "in");
+
+
 
 	lcd_reset();
 	
@@ -426,9 +478,12 @@ int main(int argc, char *argv[]) {
 
 	lcd_fill_screen(COLOR_BLUE);
 
+    gpio_get_value(18);
+    gpio_get_value(23);
+    gpio_get_value(24);
 
-    lcd_put_str(20, 30, " Hi raspberry! ", Font_11x18, COLOR_RED, COLOR_BLACK);
-
+    lcd_put_str(80, 10, get_ip(),   Font_11x18, COLOR_RED, COLOR_BLACK);
+    lcd_put_str(60, 50, get_time(), Font_11x18, COLOR_RED, COLOR_BLACK);
 
 
     lcd_update_screen();
