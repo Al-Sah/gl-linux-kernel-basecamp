@@ -13,6 +13,12 @@
 *.obj
 *.orig
 *.rej
+*.cmd
+*.mod
+*.mod.c
+*.symvers
+*.order
+*.ko
 *.so
 *.so.*
 *_pch.h.cpp

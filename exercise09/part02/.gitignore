@@ -9,6 +9,12 @@
 *.a
 *.core
 *.moc
+*.cmd
+*.mod
+*.mod.c
+*.symvers
+*.order
+*.ko
 *.o
 *.obj
 *.orig
