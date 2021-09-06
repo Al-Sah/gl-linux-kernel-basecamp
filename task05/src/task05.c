@@ -1,4 +1,3 @@
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
@@ -6,17 +5,80 @@
 #include <asm/uaccess.h>
 #include <linux/slab.h>
 
+
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Al_Sah");
 MODULE_DESCRIPTION("Simple currency convertor");
 MODULE_VERSION("0.1");
 
 
+// Euro will be a basic currency
+#define MAX_CURRENCY_STR_SIZE 6
+#define FLOAT_PART_SIZE 1000
+
+struct conversion_rule{
+    int multiplier;
+    int divider;
+};
+
+struct currency {
+    char id[MAX_CURRENCY_STR_SIZE];
+    struct conversion_rule to_eur;
+    struct conversion_rule from_eur;
+};
+
+struct currency create(char* id,
+                       int to_eur_mul, int to_eur_div,
+                       int from_eur_mul, int from_eur_div ){
+
+    struct currency currency;
+    struct conversion_rule from_eur;
+    struct conversion_rule to_eur;
+
+    to_eur.divider = to_eur_div;
+    to_eur.multiplier = to_eur_mul;
+    from_eur.multiplier = from_eur_mul;
+    from_eur.divider = from_eur_div;
+
+    strcpy(currency.id, id);
+    currency.from_eur = from_eur;
+    currency.to_eur = to_eur;
+
+    return currency;
+}
+
+int power(int x, short y)
+{
+    if (y == 0)
+        return 1;
+    else if (y%2 == 0)
+        return power(x, y/2)*power(x, y/2);
+    else
+        return x*power(x, y/2)*power(x, y/2);
+}
+
+static const char* get_zeros_str(short zeros){
+    static char str[16];
+    int i;
+    for(i = 0; i < zeros; i++){
+        str[i] = '0';
+    }
+    str[++i] = '\0';
+    return str;
+}
+
+
+static int get_float_part(long res_float_part, uint32_t shift){
+    long res = res_float_part;
+    while (res > FLOAT_PART_SIZE / shift) {
+        res /= 10;
+    }
+    return (int)res;
+}
+
 static int money = 100;
-static int result = 0, result_float=0;
 static char *in_currency = "UAH";
 static char *out_currency = "EUR";
-static int success=0;
 
 module_param(money, int, S_IRUSR);
 MODULE_PARM_DESC(money, "A number to convert");
@@ -39,68 +101,52 @@ static short get_zeros(unsigned int a, unsigned int b ){
     return zeros;
 }
 
-static void convert(int sum, char * in_currency, char * out_currency)
-{
+static void convert(int sum, const struct currency* in_currency, const struct currency* out_currency) {
     char result_amount[16] = "";
-
-    if((strcmp(in_currency, "UAH") == 0) && (strcmp(out_currency, "EUR") == 0)){
-
-        int tmp = sum * 3102;
-        result = tmp / 100000;
-        result_float = tmp % 100000;
-
-        short zeros = get_zeros(3102, 100000);
-
-        if(zeros == 0){
-            int res = result_float;
-            while (res > 100){
-                res /=10;
-            }
-            snprintf(result_amount, sizeof(result_amount), "%d.%d", result, res);
-        } else if (zeros == 1){
-            int res = result_float;
-            while (res > 10){
-                res /=10;
-            }
-            snprintf(result_amount, sizeof(result_amount), "%d.0%d", result, res);
-        } else {
-            snprintf(result_amount, sizeof(result_amount), "%d.00", result);
-        }
-        success=1;
+    long res_int_part;
+    long res_float_part;
 
 
-    } else if((strcmp(in_currency, "EUR") == 0) && (strcmp(out_currency, "UAH") == 0)){
-        int tmp = 32232;
-        int res = 0;
+    long long int tmp = (long long int)sum * (long long int)in_currency->to_eur.multiplier * (long long int)out_currency->from_eur.multiplier;
 
-        result = tmp / 1000;
-        result_float = tmp % 1000;
-        res = result_float;
+    res_int_part = tmp / (in_currency->to_eur.divider * out_currency->from_eur.divider);
+    res_float_part = tmp % (in_currency->to_eur.divider * out_currency->from_eur.divider);
 
-        while (res > 100){
-            res /= 10;
-        }
-        snprintf(result_amount, sizeof(result_amount), "%d.%d", result, res);
-        success=1;
+    if (sum * in_currency->to_eur.multiplier * out_currency->from_eur.multiplier <
+        in_currency->to_eur.divider * out_currency->from_eur.divider) {
+
+        short zeros = get_zeros(sum * in_currency->to_eur.multiplier * out_currency->from_eur.multiplier,
+                                in_currency->to_eur.divider * out_currency->from_eur.divider);
+
+        snprintf(result_amount, sizeof(result_amount), "%ld.%s%d", res_int_part, get_zeros_str(zeros), get_float_part(res_float_part,(uint32_t)power(10, zeros)));
+    } else {
+        snprintf(result_amount, sizeof(result_amount), "%ld.%d", res_int_part, get_float_part(res_float_part,1));
     }
-
-
-
-    if(success == 1){
-        printk(KERN_INFO "task05: Conversion result: %s", result_amount);
-    }else{
-        printk(KERN_INFO "task05: Failed to recognize currencies");
-    }
+    printk(KERN_INFO "Result: %s\n", result_amount);
 }
 
 static int __init task05_init(void)
 {
+    struct currency eur = create("EUR", 1, 1,1,1);
+    struct currency uah = create("UAH", 31379, 1000000,319108,10000);
+    struct currency rub = create("RUB", 1154, 100000,86576,1000);
+
+    printk(KERN_INFO "task05: Testing ....");
+    convert(1, &uah, &eur);
+    convert(1, &rub, &eur);
+    convert(100, &uah, &rub);
+
     printk(KERN_INFO "task05: Hello user !! It is currency convertor\n");
     printk(KERN_INFO "task05: Input amount of money: %d\n", money);
     printk(KERN_INFO "task05: Converting from %s to %s", in_currency, out_currency);
 
-    convert(money, in_currency, out_currency);
-
+    if((strcmp(in_currency, "UAH") == 0) && (strcmp(out_currency, "EUR") == 0)){
+        convert(money, &uah, &eur);
+    } else if ((strcmp(in_currency, "EUR") == 0) && (strcmp(out_currency, "UAH") == 0)){
+        convert(money, &eur, &uah);
+    }else {
+        printk(KERN_INFO "task05: Failed to recognize currencies");
+    }
     return 0;
 }
 
