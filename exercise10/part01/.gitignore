@@ -3,7 +3,6 @@
 
 *build*
 /bin
-send_to_pi
 
 *.idea
 *~
@@ -15,6 +14,12 @@ send_to_pi
 *.obj
 *.orig
 *.rej
+*.cmd
+*.mod
+*.mod.c
+*.symvers
+*.order
+*.ko
 *.so
 *.so.*
 *_pch.h.cpp
@@ -27,11 +32,7 @@ tags
 .DS_Store
 .directory
 *.debug
-*.mod
-*.mod.c
-*.symvers
-*.order
-*.ko
+Makefile*
 *.prl
 *.app
 moc_*.cpp
