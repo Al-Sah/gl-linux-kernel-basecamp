@@ -97,7 +97,6 @@ static short get_zeros(unsigned int a, unsigned int b ){
         a *= 10;
         zeros++;
     }
-    zeros--;
     return zeros;
 }
 
