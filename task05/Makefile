@@ -29,8 +29,8 @@ test_remote: all
 
 test: all
 	sudo dmesg -C
-	# sudo insmod task05.ko money=200 in_currency="EUR" out_currency="UAH"
-	sudo insmod task05.ko money=200
+	sudo insmod task05.ko money=200 in_currency="EUR" out_currency="UAH"
+	# sudo insmod task05.ko money=200
 	sudo rmmod task05.ko
 	dmesg
 
