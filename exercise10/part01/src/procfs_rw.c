@@ -1,10 +1,15 @@
-
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/proc_fs.h>
-#include <linux/sched.h>
-#include <asm/uaccess.h>
+#include <linux/version.h>
+#include <linux/uaccess.h>
 #include <linux/slab.h>
+#include <linux/fs.h>
+#include <linux/proc_fs.h>
+
+
+static ssize_t example_read(struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
+static ssize_t example_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset);
+
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Al_Sah");
@@ -18,21 +23,25 @@ MODULE_VERSION("0.1");
 #define BUFFER_SIZE     10
 
 
-static char *proc_buffer;
+static char* proc_buffer;
 static size_t proc_msg_length;
 static size_t proc_msg_read_pos;
 
 static struct proc_dir_entry *proc_dir;
 static struct proc_dir_entry *proc_file;
 
-static int example_read(struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
-static int example_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset);
 
-
-static const struct proc_ops proc_ops = {
-  .proc_read = example_read,
-  .proc_write = example_write,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
+static const struct proc_ops proc_fops = {
+    .proc_read  = example_read,
+    .proc_write = example_write,
 };
+#else
+static struct file_operations proc_fops = {
+    .read  = example_read,
+    .write = example_write,
+};
+#endif
 
 
 static int create_buffer(void)
@@ -56,16 +65,13 @@ static void cleanup_buffer(void)
 }
 
 
-struct proc_dir_entry *proc_file_entry;
-
-
 static int create_proc_example(void)
 {
     proc_dir = proc_mkdir(PROC_DIRECTORY, NULL);
     if (NULL == proc_dir)
         return -EFAULT;
 
-    proc_file = proc_create(PROC_FILENAME, 0, proc_dir, &proc_ops);
+    proc_file = proc_create(PROC_FILENAME, 0, proc_dir, &proc_fops);
     if (NULL == proc_file)
         return -EFAULT;
 
@@ -88,50 +94,55 @@ static void cleanup_proc_example(void)
 }
 
 
-static int example_read(struct file *file_p, char __user *buffer, size_t length, loff_t *offset)
+static ssize_t example_read(struct file *file_p, char __user *buffer, size_t length, loff_t *offset)
 {
     size_t left;
 
-    if (length > (proc_msg_length - proc_msg_read_pos))
+    if (length > (proc_msg_length - proc_msg_read_pos)) {
         length = (proc_msg_length - proc_msg_read_pos);
+    }
 
     left = copy_to_user(buffer, &proc_buffer[proc_msg_read_pos], length);
 
     proc_msg_read_pos += length - left;
 
-    if (left)
-        printk(KERN_ERR MODULE_TAG "failed to read %u from %u chars\n", left, length);
-    else
-        printk(KERN_NOTICE MODULE_TAG "read %u chars\n", length);
+    if (left){
+        printk(KERN_ERR MODULE_TAG "failed to read %lu from %lu chars\n", left, length);
+    } else {
+        printk(KERN_NOTICE MODULE_TAG "read %lu chars\n", length);
+    }
 
-    return length - left;
+    return (ssize_t)(length - left);
 }
 
 
-static int example_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset)
+static ssize_t example_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset)
 {
     size_t msg_length;
     size_t left;
 
     if (length > BUFFER_SIZE)
     {
-        printk(KERN_WARNING MODULE_TAG "reduse message length from %u to %u chars\n", length, BUFFER_SIZE);
+        printk(KERN_WARNING MODULE_TAG "Reduce message length from %lu to %u chars\n", length, BUFFER_SIZE);
         msg_length = BUFFER_SIZE;
     }
-    else
+    else{
         msg_length = length;
+    }
 
     left = copy_from_user(proc_buffer, buffer, msg_length);
 
     proc_msg_length = msg_length - left;
     proc_msg_read_pos = 0;
 
-    if (left)
-        printk(KERN_ERR MODULE_TAG "failed to write %u from %u chars\n", left, msg_length);
-    else
-        printk(KERN_NOTICE MODULE_TAG "written %u chars\n", msg_length);
+    if (left){
+        printk(KERN_ERR MODULE_TAG "failed to write %lu from %lu chars\n", left, msg_length);
+    }
+    else{
+        printk(KERN_NOTICE MODULE_TAG "written %lu chars\n", msg_length);
+    }
 
-    return length;
+    return (ssize_t)length;
 }
 
 
@@ -166,5 +177,5 @@ static void __exit example_exit(void)
 }
 
 
-module_init(example_init);
-module_exit(example_exit);
+module_init(example_init)
+module_exit(example_exit)
