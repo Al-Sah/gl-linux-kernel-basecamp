@@ -1,25 +1,27 @@
 
 TARGET = procfs_rw
-SRC_DIR	= src
-BIN_DIR	= bin
-PWD=$(shell pwd)
-SOURCES = $(wildcard $(SRC_DIR)/*.c)
+
+PROJECT_DIR=$(shell pwd)
+SRC_DIR	= $(PROJECT_DIR)/src
+BIN_DIR	= $(PROJECT_DIR)/build
 
 ifeq ($(KERNEL_DIR),)
 	KERNEL_DIR = /lib/modules/$(shell uname -r)/build
 endif
 
-obj-m += $(TARGET).o
 
-.PHONY: all build rebuild clean test test_remote
+.PHONY: all build sub-make clean test test_remote
 
-build: $(subst $(SRC_DIR),$(BIN_DIR),$(SOURCES))
+all: build
+
+build: clean sub-make
 	@echo "  Building...  KERNEL_DIR = ${KERNEL_DIR}"
-	@echo "obj-m += $(TARGET).o" > $(PWD)/$(BIN_DIR)/Makefile
-	@$(MAKE) -C $(KERNEL_DIR) M=$(PWD)/$(BIN_DIR) modules
+	@$(MAKE) -C $(KERNEL_DIR) M=$(SRC_DIR) modules
+	@cp $(SRC_DIR)/$(TARGET).ko $(BIN_DIR)/$(TARGET).ko
+	@$(MAKE) -C $(KERNEL_DIR) M=$(SRC_DIR)  clean
 
-all: rebuild
-rebuild: clean build
+sub-make:
+	@echo "obj-m += $(TARGET).o" > $(SRC_DIR)/Makefile
 
 clean:
 	@echo "  Cleaning... "
@@ -32,10 +34,6 @@ test_remote: all
 
 test: all
 	@sudo dmesg -C
-	@sudo insmod procfs_rw.ko
+	@sudo insmod $(BIN_DIR)/procfs_rw.ko
 	@sudo rmmod procfs_rw.ko
 	@dmesg
-
-
-$(BIN_DIR)/%: $(SRC_DIR)/% # Create a symlink from src to bin
-	@-@ln -s ../$< $@
