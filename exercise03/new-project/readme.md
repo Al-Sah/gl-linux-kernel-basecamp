@@ -43,5 +43,18 @@
     git status
     git log --oneline --decorate --graph --all
 
+#### Subtask7
+
+    gedit readme.md
+    git commit -am "Exercise03(readme): Add the command log of the 3d subtask"
+    gedit readme.md
+    git commit -am "Exercise03(readme): Add the command log of the 4th subtask"
+    gedit readme.md
+    git commit -am "Exercise03(readme): Add the command log of the 5th subtask"
+    gedit readme.md
+    git commit -am "Exercise03(readme): Add the command log of the 6th subtask"
+    gedit readme.md
+    git commit -am "Exercise03(readme): Add the command log of the 7th subtask"
+    git log --oneline --decorate --graph --all
 
 
