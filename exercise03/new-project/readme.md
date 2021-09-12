@@ -12,3 +12,11 @@
 
     mkdir exercise03
     cd exercise03
+
+#### Subtask3
+
+    mkdir pro
+    cd pro
+    touch readme.md
+    git add .
+    git commit -m "Exercise03: Init exercise project"
