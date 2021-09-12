@@ -42,12 +42,12 @@ if [ $# -ge 1 ] && [ -d "$1" ]; then
     dir="$1"
 fi
 
-
-./files_modifier.sh $test_flag $recursive_flag
+# Exit status equals number of files to delete
+./files_modifier.sh $test_flag $recursive_flag "$dir"
 files_found=$?
 
 
 if (( files_found > 0 )); then
   echo "Running ... /exercise01/script.sh"
-  ./../exercise01/files_modifier.sh $test_flag $recursive_flag "$dir"
+  ./../exercise01/script.sh $test_flag $recursive_flag "$dir"
 fi

@@ -1,9 +1,8 @@
 #! /bin/bash
 
-dir=$(pwd)
+dir="$(pwd)"
 test_mode=0
 maxdepth="-maxdepth 1"
-force=""
 
 print_help(){
   echo "
@@ -49,15 +48,12 @@ if [ $# -ge 1 ] && [ -d "$1" ]; then
 fi
 
 
-files=$(find $dir $force $maxdepth -type f -mtime +30)
+files=$(find $dir $maxdepth -type f -mtime +30)
 found=0
 
 for file in $files; do
 
-if [[ "$file" == "$0" ]]; then
-  echo "x has the value 'valid'"
-  continue;
-fi
+  if [[ "$file" == "$0" ]]; then continue; fi
   ((found++))
 
   if (( test_mode == 1 )); then

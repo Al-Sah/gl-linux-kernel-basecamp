@@ -1,9 +1,8 @@
 #! /bin/bash
 
-dir=$(pwd)
+dir="$(pwd)"
 delete_flag="-delete"
 maxdepth="-maxdepth 1"
-force=""
 
 print_help(){
   echo "
@@ -23,13 +22,12 @@ print_help(){
       -h --help:       Print help
       -r --recursive:  Enable recursive search
       -t --test:       Just search, without deletion
-      -y --yes:        Force mode
       "
 }
 
 
 # Extracting flags from positional parameters
-options=$(getopt -l "help,recursive,yes,test" -o "hryt" -- "$@")
+options=$(getopt -l "help,recursive,test" -o "hrt" -- "$@")
 eval set -- "$options"; # Sorting flags and positional parameters with "--" delimiter
 
 # Flags processing
@@ -39,7 +37,6 @@ while true; do
     -h|--help) print_help; exit 0;;
     -r|--recursive) maxdepth="" ;;
     -t|--test) delete_flag="" ;;
-    -y|--yes) force="-f";;
     --) break ;;
   esac
 
@@ -50,10 +47,10 @@ if [ $# -ge 1 ] && [ -d "$1" ]; then
     dir="$1"
 fi
 
-find $dir $force $maxdepth -type f -name "_*" $delete_flag
-find $dir $force $maxdepth -type f -name "-*" $delete_flag
-find $dir $force $maxdepth -type f -name "~*" $delete_flag
-find $dir $force $maxdepth -type f -name "*.tmp" $delete_flag
+find $dir $maxdepth -type f -name "_*" $delete_flag
+find $dir $maxdepth -type f -name "-*" $delete_flag
+find $dir $maxdepth -type f -name "~*" $delete_flag
+find $dir $maxdepth -type f -name "*.tmp" $delete_flag
 find $dir $maxdepth -type d -empty $delete_flag
 
 
