@@ -3,7 +3,6 @@
 dir=$(pwd)
 test_mode=0
 maxdepth="-maxdepth 1"
-recursive_flag=""
 force=""
 
 print_help(){
@@ -37,7 +36,7 @@ while true; do
 
   case $1 in
     -h|--help) print_help; exit 0;;
-    -r|--recursive) maxdepth=""; recursive_flag="r" ;;
+    -r|--recursive) maxdepth=""; ;;
     -t|--test) test_mode=1 ;;
     --) break ;;
   esac
@@ -71,9 +70,5 @@ fi
 
 done
 
-if (( found > 0 )) && ((test_mode == 0 )); then
-  echo "Running /exercise01/script.sh"
-  ./../exercise01/script.sh $recursive_flag -y
-else
-  echo " Fond files to delete: $found"
-fi
+echo " * Files found $found"
+exit "$found"
