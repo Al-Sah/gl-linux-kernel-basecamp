@@ -27,3 +27,10 @@
     gedit readme.md
     git status
     git commit -am "Exercise03(readme): Add the command log of the 1st subtask"
+
+#### Subtask5
+
+    git checkout master
+    gedit readme.md
+    git commit -am "Exercise03(readme): Add the command log of the 2nd subtask"
+    git log --oneline --decorate --graph --all
