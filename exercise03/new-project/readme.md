@@ -20,3 +20,10 @@
     touch readme.md
     git add .
     git commit -m "Exercise03: Init exercise project"
+
+#### Subtask4
+
+    git checkout -b first_branch
+    gedit readme.md
+    git status
+    git commit -am "Exercise03(readme): Add the command log of the 1st subtask"
