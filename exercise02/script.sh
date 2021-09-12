@@ -11,9 +11,13 @@ print_help(){
     $(tput bold)* HELP *$(tput sgr0)
 
   $(tput bold)RUN$(tput sgr0)
-    ./script [OPTIONS]
+    ./script [OPTIONS] [DIR]
 
   $(tput bold)DESCRIPTION$(tput sgr0)
+
+  Bash script adds the '~' symbol to the filenames
+  which haven't been accessed/modified for 30 days
+  in the specified directory
 
   $(tput bold)OPTIONS$(tput sgr0)
 
@@ -62,8 +66,6 @@ fi
   else
     file_basename=$(basename "$file")
     file_dirname=$(dirname "$file")
-    echo "file_basename $file_basename"
-    echo "file_dirname $file_dirname"
     mv "$file_dirname/$file_basename" "$file_dirname/~$file_basename"
   fi
 
