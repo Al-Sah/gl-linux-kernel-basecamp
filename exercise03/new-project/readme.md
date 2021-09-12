@@ -34,3 +34,14 @@
     gedit readme.md
     git commit -am "Exercise03(readme): Add the command log of the 2nd subtask"
     git log --oneline --decorate --graph --all
+
+#### Subtask6
+
+    git status
+    git merge first_branch
+    git mergetool
+    git status
+    git log --oneline --decorate --graph --all
+
+
+
