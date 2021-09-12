@@ -1,0 +1,6 @@
+
+*
+!.gitignore
+!files_generator.sh
+!files_modifier.sh
+!script-controller.sh
