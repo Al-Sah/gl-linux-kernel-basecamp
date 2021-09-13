@@ -14,7 +14,6 @@ MODULE_VERSION("0.1");
 
 #define MODULE_TAG      "string_processor"
 #define PROC_DIRECTORY  "string_processor"
-#define PROC_FILENAME   "buffer"
 #define BUFFER_SIZE     256
 
 
@@ -22,20 +21,24 @@ static char* proc_buffer;
 static bool read;
 
 static struct proc_dir_entry *proc_dir;
-static struct proc_dir_entry *proc_file;
+static struct proc_dir_entry *proc_in_file, *proc_out_file;
 
 static ssize_t proc_read(struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
 static ssize_t proc_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
-static const struct proc_ops proc_fops = {
-    .proc_read  = proc_read,
+static const struct proc_ops proc_in_fops = {
     .proc_write = proc_write,
 };
+static const struct proc_ops proc_out_fops = {
+    .proc_read  = proc_read,
+};
 #else
-static struct file_operations proc_fops = {
-        .read  = proc_read,
+static struct file_operations proc_in_fops = {
         .write = proc_write,
+};
+static struct file_operations proc_out_fops = {
+        .read  = proc_read,
 };
 #endif
 
@@ -43,7 +46,7 @@ static struct file_operations proc_fops = {
 static int  create_proc_entries(void);
 static void delete_proc_entries(void);
 
-static int create_buffer(char ** buffer, int size);
+static int create_buffer(char** buffer, int size);
 static void clean_buffer(char** buffer);
 
 /// @param src have to be a zero-terminated string
@@ -89,22 +92,33 @@ module_exit(string_processor_exit)
 static int create_proc_entries(void)
 {
     proc_dir = proc_mkdir(PROC_DIRECTORY, NULL);
-    if (NULL == proc_dir)
+    if (proc_dir == NULL){
         return -EFAULT;
+    }
 
-    proc_file = proc_create(PROC_FILENAME, 0, proc_dir, &proc_fops);
-    if (NULL == proc_file)
+    proc_in_file = proc_create("input", 0, proc_dir, &proc_in_fops);
+    if (proc_in_file == NULL ) {
         return -EFAULT;
+    }
+    proc_out_file = proc_create("output", 0, proc_dir, &proc_out_fops);
+    if (proc_out_file == NULL) {
+        return -EFAULT;
+    }
 
     return 0;
 }
 
 static void delete_proc_entries(void)
 {
-    if (proc_file)
+    if (proc_in_file)
     {
-        remove_proc_entry(PROC_FILENAME, proc_dir);
-        proc_file = NULL;
+        remove_proc_entry("input", proc_dir);
+        proc_in_file = NULL;
+    }
+    if (proc_out_file)
+    {
+        remove_proc_entry("output", proc_dir);
+        proc_out_file = NULL;
     }
 
     if (proc_dir)
