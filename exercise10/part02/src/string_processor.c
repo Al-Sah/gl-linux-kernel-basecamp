@@ -1,7 +1,6 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/uaccess.h>
-#include <linux/fs.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Al_Sah");
@@ -14,6 +13,7 @@ module_param_string(str, str, 256, 0);
 
 #define MODULE_TAG "string_processor"
 
+/// @param src have to be a zero-terminated string
 static void to_uppercase(char* src){
     int i;
     for (i = 0; i < strlen(src); ++i) {
@@ -24,12 +24,34 @@ static void to_uppercase(char* src){
     }
 }
 
+/// @param src have to be a zero-terminated string
+static void flip_words(char* src){
+    int i, j, k;
+    size_t size = strlen(src);
+
+    if(size == 0) return;
+    j = 0;
+
+    for (i = 0; i <= size; ++i) {
+        if(src[i] == ' ' || src[i] == '\0'){
+            k = i - 1;
+            while(j <= k){
+                char tmp = src[j];
+                src[j++] = src[k];
+                src[k--] = tmp;
+            }
+            j = i + 1;
+        }
+    }
+}
+
 static int __init string_processor_init(void)
 {
     char string_to_modify[64];
     strcpy(string_to_modify, str);
     printk(KERN_INFO MODULE_TAG": Input str: %s\n", string_to_modify);
     to_uppercase(string_to_modify);
+    flip_words(string_to_modify);
     printk(KERN_INFO MODULE_TAG": Output str: %s\n", string_to_modify);
     return -1;
 }
