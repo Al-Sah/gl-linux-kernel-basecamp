@@ -28,6 +28,9 @@ clean:
 	@rm -rf $(BIN_DIR)
 	@mkdir $(BIN_DIR)
 
+send: all
+	scp -P 8022 $(BIN_DIR)/*.ko user@localhost:~
+
 test: all
 	@sudo dmesg -C
 	@sudo insmod $(BIN_DIR)/$(TARGET).ko
