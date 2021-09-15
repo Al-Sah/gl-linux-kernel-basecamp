@@ -202,14 +202,15 @@ static ssize_t proc_write(__attribute__((unused)) struct file *file_p,
         const char __user *buffer, size_t length, __attribute__((unused)) loff_t *offset)
 {
     size_t msg_length, failed;
-    if(length > BUFFER_SIZE){
+    if(length+1 > BUFFER_SIZE){
         printk(KERN_WARNING MODULE_TAG "Reduce message length from %lu to %u chars\n", (ulong)length, BUFFER_SIZE);
-        msg_length = BUFFER_SIZE;
+        msg_length = BUFFER_SIZE-1;
     }  else{
         msg_length = length;
     }
-
     failed = copy_from_user(proc_buffer, buffer, msg_length);
+    proc_buffer[msg_length]='\0';
+
     if (failed != 0){
         printk(KERN_WARNING MODULE_TAG ": Failed to copy %lu from %lu \n", (ulong)failed, (ulong)length);
     }
