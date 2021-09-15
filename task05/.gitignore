@@ -3,6 +3,7 @@
 
 *build*
 /bin
+/src/Makefile
 
 *.idea
 *~
