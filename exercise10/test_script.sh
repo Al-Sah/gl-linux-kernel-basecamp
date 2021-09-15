@@ -138,5 +138,41 @@ success_msg="Output is: '$src'"
 run_test "$src" "$res" "$success_msg" "$failure_msg" "$test_number"; ((test_number++))
 
 
+
+echo "$(tput bold)$test_info Different strings length (Correct output check) $end"
+echo "$test_info writing in $sys_fs_interface '0' $end (no manipulations)"
+
+test_number=1
+
+echo "0" | sudo tee $sys_fs_interface > /dev/null
+# -------------------------------------------------------------------------------------
+res="zzz zzz"
+echo "$test_info writing in $proc_fs_in '$res' $end"
+echo "$res" | sudo tee $proc_fs_in &> /dev/null
+echo "0" | sudo tee $sys_fs_interface > /dev/null
+src="$(cat $proc_fs_out)"
+failure_msg="Output is '$src', but had to be: '$res'"
+success_msg="Output is: '$src'"
+run_test "$src" "$res" "$success_msg" "$failure_msg" "$test_number"; ((test_number++))
+
+# -------------------------------------------------------------------------------------
+res="abracadabra abracadabra"
+echo "$test_info writing in $proc_fs_in '$res' $end"
+echo "$res" | sudo tee $proc_fs_in &> /dev/null
+src="$(cat $proc_fs_out)"
+failure_msg="Output is '$src', but had to be: '$res'"
+success_msg="Output is: '$src'"
+run_test "$src" "$res" "$success_msg" "$failure_msg" "$test_number"; ((test_number++))
+
+# -------------------------------------------------------------------------------------
+res="zzz"
+echo "$test_info writing in $proc_fs_in '$res' $end"
+echo "$res" | sudo tee $proc_fs_in &> /dev/null
+src="$(cat $proc_fs_out)"
+failure_msg="Output is '$src', but had to be: '$res'"
+success_msg="Output is: '$src'"
+run_test "$src" "$res" "$success_msg" "$failure_msg" "$test_number"; ((test_number++))
+
+
 sudo rmmod string_processor.ko
 echo "$test_info module string_processor.ko removed $end"
