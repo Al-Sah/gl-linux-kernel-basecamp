@@ -23,7 +23,9 @@ MODULE_VERSION("0.1");
 static char settings_buffer[ SETTINGS_BUFFER_SIZE ] = "0";
 static struct class *string_processor_class;
 
-static char* proc_buffer;
+static short update_mode=1;
+static char* tmp_buffer = NULL;
+static char* proc_buffer = NULL;
 
 static struct proc_dir_entry *proc_dir;
 static struct proc_dir_entry *proc_in_file, *proc_out_file;
@@ -64,46 +66,53 @@ static void to_uppercase(char* src);
 static void flip_words(char* src);
 
 
-static int __init string_processor_init(void)
-{
-    int err;
-
-    err = create_buffer(&proc_buffer);
-    if (err) {
-        goto error;
-    }
-    err = create_proc_entries();
-    if (err) {
-        goto error;
-    }
-
-    string_processor_class = class_create(THIS_MODULE, "string_processor_class" );
-    if( IS_ERR(string_processor_class) ){
-        printk( KERN_WARNING MODULE_TAG": Failed to create sys class" );
-    }
-    if(class_create_file( string_processor_class, &class_attr_settings ) != 0){
-        printk(KERN_WARNING MODULE_TAG ": Failed to create sys class");
-    }
-    printk(KERN_INFO MODULE_TAG ": Loaded\n");
-    return 0;
-
-error:
-
-    printk(KERN_ERR MODULE_TAG ": Failed to load\n");
+static void inline on_exit(void){
     delete_proc_entries();
     clean_buffer(&proc_buffer);
+    clean_buffer(&tmp_buffer);
 
     class_remove_file( string_processor_class, &class_attr_settings );
     class_destroy( string_processor_class );
+}
+
+static int __init string_processor_init(void)
+{
+    int err;
+    do {
+        err = create_buffer(&proc_buffer);
+        if (err) {
+            break;
+        }
+        err = create_buffer(&tmp_buffer);
+        if (err) {
+            break;
+        }
+        err = create_proc_entries();
+        if (err) {
+            printk(KERN_WARNING MODULE_TAG": Failed to create proc interface");
+            break;
+        }
+
+        string_processor_class = class_create(THIS_MODULE, "string_processor_class");
+        if (IS_ERR(string_processor_class)) {
+            printk(KERN_WARNING MODULE_TAG": Failed to create sys class");
+            break;
+        }
+        if (class_create_file(string_processor_class, &class_attr_settings) != 0) {
+            printk(KERN_WARNING MODULE_TAG ": Failed to create sys_fs 'settings' file");
+            break;
+        }
+        printk(KERN_INFO MODULE_TAG ": Loaded\n");
+        return 0;
+    } while (42);
+
+    printk(KERN_ERR MODULE_TAG ": Failed to load\n");
+    on_exit();
     return err;
 }
 
 static void __exit string_processor_exit(void){
-    delete_proc_entries();
-    clean_buffer(&proc_buffer);
-
-    class_remove_file( string_processor_class, &class_attr_settings );
-    class_destroy( string_processor_class );
+    on_exit();
     printk(KERN_INFO MODULE_TAG ": Exited\n");
 }
 
@@ -120,13 +129,19 @@ static ssize_t sys_show(__attribute__((unused)) struct class *class,
 
 static ssize_t sys_store(__attribute__((unused)) struct class *class,
         __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count ) {
+    short change=1;
+    char tmp = settings_buffer[0];
 
     switch (buf[0]) {
         case '0': strcpy(settings_buffer, "0"); break; // no modification
         case '1': strcpy(settings_buffer, "1"); break; // flip_words
         case '2': strcpy(settings_buffer, "2"); break; // to_uppercase
         case '3': strcpy(settings_buffer, "3"); break; // flip_words and to_uppercase
-        default : printk( KERN_WARNING MODULE_TAG": Failed to update mode");
+        default : printk( KERN_WARNING MODULE_TAG": Failed to update mode"); change=0;
+    }
+
+    if(change == 1 && tmp != settings_buffer[0]){
+        update_mode = 1;
     }
     settings_buffer[ count ] = '\0';
     return (ssize_t)count;
@@ -174,7 +189,6 @@ static void delete_proc_entries(void)
 
 static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset)
 {
-    char tmp_buffer[BUFFER_SIZE];
     length = strlen(proc_buffer);
     strcpy(tmp_buffer, proc_buffer);
 
@@ -182,12 +196,17 @@ static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __use
         return 0;
     }
 
-    if(settings_buffer[0] == '3' || settings_buffer[0] == '1' ){
-        flip_words(tmp_buffer);
+    if(update_mode == 1){
+        char tmp = settings_buffer[0];
+        if(tmp == '3' || tmp == '1' ){
+            flip_words(tmp_buffer);
+        }
+        if(tmp == '3' || tmp == '2' ){
+            to_uppercase(tmp_buffer);
+        }
+        update_mode=0;
     }
-    if(settings_buffer[0] == '3' || settings_buffer[0] == '2' ){
-        to_uppercase(tmp_buffer);
-    }
+
 
     if( copy_to_user( buffer, tmp_buffer, length )) {
         printk(KERN_WARNING MODULE_TAG ": Failed to copy some chars");
@@ -208,8 +227,10 @@ static ssize_t proc_write(__attribute__((unused)) struct file *file_p,
     }  else{
         msg_length = length;
     }
+
     failed = copy_from_user(proc_buffer, buffer, msg_length);
     proc_buffer[msg_length]='\0';
+    update_mode=1;
 
     if (failed != 0){
         printk(KERN_WARNING MODULE_TAG ": Failed to copy %lu from %lu \n", (ulong)failed, (ulong)length);
@@ -252,6 +273,7 @@ static int create_buffer(char **buffer)
 {
     *buffer = (char*) kmalloc(BUFFER_SIZE, GFP_KERNEL);
     if (*buffer == NULL){
+        printk(KERN_WARNING MODULE_TAG": Failed to create buffer");
         return -1;
     }
     return 0;
