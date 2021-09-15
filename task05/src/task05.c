@@ -3,7 +3,6 @@
 #include <linux/proc_fs.h>
 #include <linux/sched.h>
 #include <asm/uaccess.h>
-#include <linux/slab.h>
 
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -52,9 +51,9 @@ int power(int x, short y)
     if (y == 0)
         return 1;
     else if (y%2 == 0)
-        return power(x, y/2)*power(x, y/2);
+        return power(x, (short)(y/2))*power(x, (short)(y/2));
     else
-        return x*power(x, y/2)*power(x, y/2);
+        return x*power(x, (short)(y/2))*power(x, (short)(y/2));
 }
 
 static const char* get_zeros_str(short zeros){
@@ -100,22 +99,22 @@ static short get_zeros(unsigned int a, unsigned int b ){
     return zeros;
 }
 
-static void convert(int sum, const struct currency* in_currency, const struct currency* out_currency) {
+static void convert(int sum, const struct currency* in_curr, const struct currency* out_curr) {
     char result_amount[16] = "";
     long res_int_part;
     long res_float_part;
 
 
-    long long int tmp = (long long int)sum * (long long int)in_currency->to_eur.multiplier * (long long int)out_currency->from_eur.multiplier;
+    long long int tmp = (long long int)sum * (long long int)in_curr->to_eur.multiplier * (long long int)out_curr->from_eur.multiplier;
 
-    res_int_part = tmp / (in_currency->to_eur.divider * out_currency->from_eur.divider);
-    res_float_part = tmp % (in_currency->to_eur.divider * out_currency->from_eur.divider);
+    res_int_part = tmp / (in_curr->to_eur.divider * out_curr->from_eur.divider);
+    res_float_part = tmp % (in_curr->to_eur.divider * out_curr->from_eur.divider);
 
-    if (sum * in_currency->to_eur.multiplier * out_currency->from_eur.multiplier <
-        in_currency->to_eur.divider * out_currency->from_eur.divider) {
+    if (sum * in_curr->to_eur.multiplier * out_curr->from_eur.multiplier <
+        in_curr->to_eur.divider * out_curr->from_eur.divider) {
 
-        short zeros = get_zeros(sum * in_currency->to_eur.multiplier * out_currency->from_eur.multiplier,
-                                in_currency->to_eur.divider * out_currency->from_eur.divider);
+        short zeros = get_zeros(sum * in_curr->to_eur.multiplier * out_curr->from_eur.multiplier,
+                                in_curr->to_eur.divider * out_curr->from_eur.divider);
 
         snprintf(result_amount, sizeof(result_amount), "%ld.%s%d", res_int_part, get_zeros_str(zeros), get_float_part(res_float_part,(uint32_t)power(10, zeros)));
     } else {
@@ -155,5 +154,5 @@ static void __exit task05_exit(void)
     printk(KERN_INFO "task05: Bye...\n");
 }
 
-module_init(task05_init);
-module_exit(task05_exit);
+module_init(task05_init)
+module_exit(task05_exit)
