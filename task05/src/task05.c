@@ -2,6 +2,8 @@
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
 #include <linux/sched.h>
+#include <linux/list.h>
+#include <linux/slab.h>
 #include <asm/uaccess.h>
 
 
@@ -10,10 +12,13 @@ MODULE_AUTHOR("Al_Sah");
 MODULE_DESCRIPTION("Simple currency convertor");
 MODULE_VERSION("0.1");
 
-
 // Euro will be a basic currency
 #define MAX_CURRENCY_STR_SIZE 6
 #define FLOAT_PART_SIZE 1000
+
+
+struct list_head head_node = LIST_HEAD_INIT(head_node);
+
 
 struct conversion_rule{
     int multiplier;
@@ -24,6 +29,11 @@ struct currency {
     char id[MAX_CURRENCY_STR_SIZE];
     struct conversion_rule to_eur;
     struct conversion_rule from_eur;
+};
+
+struct currency_list{
+    struct list_head list;
+    struct currency data;
 };
 
 struct currency create(char* id,
@@ -45,6 +55,66 @@ struct currency create(char* id,
 
     return currency;
 }
+
+
+void print_list(void){
+    struct currency_list *temp;
+    list_for_each_entry(temp, &head_node, list) {
+        printk(KERN_INFO "Currency: %s", temp->data.id);
+    }
+}
+
+void list_free(void){
+
+    struct currency_list *temp;
+    struct list_head *cursor, *temp_storage;
+
+    list_for_each_safe(cursor, temp_storage, &head_node){
+        temp = list_entry(cursor, struct currency_list, list);
+        printk(KERN_INFO "deleting item from list %s", temp->data.id);
+        list_del(cursor);
+        printk(KERN_INFO "freeing item %s", temp->data.id);
+        kfree(temp);
+    }
+    if(!list_empty(&head_node)){
+        printk(KERN_INFO " List is not empty after freeing! ");
+    }
+}
+
+struct currency * find_currency(const char *id){
+    struct currency_list *temp = NULL, *result = NULL;
+    struct list_head *cursor, *temp_storage;
+
+    list_for_each_safe(cursor, temp_storage, &head_node){
+        temp = list_entry(cursor, struct currency_list, list);
+        if(strcmp(temp->data.id, id) == 0){
+            result = temp;
+        }
+    }
+    if(result == NULL){
+        return NULL;
+    }
+    return &result->data;
+}
+
+void add_list_node(struct currency currency){
+    struct currency_list *temp_node = NULL;
+
+    temp_node = kmalloc(sizeof(struct currency_list), GFP_KERNEL);
+    temp_node->data = currency;
+    list_add_tail(&temp_node->list, &head_node);
+}
+
+
+/*void test_list(void){
+
+    add_list_node(create("EUR", 1, 1, 1, 1));
+    add_list_node(create("UAH", 31379, 1000000, 319108, 10000));
+    add_list_node(create("RUB", 1154, 100000, 86576, 1000));
+
+    print_list();
+    list_free();
+}*/
 
 int power(int x, short y)
 {
@@ -100,12 +170,18 @@ static short get_zeros(unsigned int a, unsigned int b ){
 }
 
 static void convert(int sum, const struct currency* in_curr, const struct currency* out_curr) {
+
     char result_amount[16] = "";
     long res_int_part;
     long res_float_part;
+    long int tmp;
 
+    if(in_curr == NULL || out_curr == NULL){
+        printk(KERN_INFO "Input contains null ptr: in %p, out %p", in_curr, out_curr);
+        return;
+    }
 
-    long long int tmp = (long long int)sum * (long long int)in_curr->to_eur.multiplier * (long long int)out_curr->from_eur.multiplier;
+    tmp = (long long int)sum * (long long int)in_curr->to_eur.multiplier * (long long int)out_curr->from_eur.multiplier;
 
     res_int_part = tmp / (in_curr->to_eur.divider * out_curr->from_eur.divider);
     res_float_part = tmp % (in_curr->to_eur.divider * out_curr->from_eur.divider);
@@ -125,32 +201,30 @@ static void convert(int sum, const struct currency* in_curr, const struct curren
 
 static int __init task05_init(void)
 {
-    struct currency eur = create("EUR", 1, 1,1,1);
-    struct currency uah = create("UAH", 31379, 1000000,319108,10000);
-    struct currency rub = create("RUB", 1154, 100000,86576,1000);
+
+    add_list_node(create("EUR", 1, 1, 1, 1));
+    add_list_node(create("UAH", 31379, 1000000, 319108, 10000));
+    add_list_node(create("RUB", 1154, 100000, 86576, 1000));
+
 
     printk(KERN_INFO "task05: Testing ....");
-    convert(1, &uah, &eur);
-    convert(1, &rub, &eur);
-    convert(100, &uah, &rub);
+    convert(1, find_currency("UAH"), find_currency("EUR"));
+    convert(1, find_currency("RUB"), find_currency("EUR"));
+    convert(100, find_currency("UAH"), find_currency("RUB"));
+    convert(100, find_currency("UAH"), find_currency("ZZZ"));
 
     printk(KERN_INFO "task05: Hello user !! It is currency convertor\n");
     printk(KERN_INFO "task05: Input amount of money: %d\n", money);
     printk(KERN_INFO "task05: Converting from %s to %s", in_currency, out_currency);
 
-    if((strcmp(in_currency, "UAH") == 0) && (strcmp(out_currency, "EUR") == 0)){
-        convert(money, &uah, &eur);
-    } else if ((strcmp(in_currency, "EUR") == 0) && (strcmp(out_currency, "UAH") == 0)){
-        convert(money, &eur, &uah);
-    }else {
-        printk(KERN_INFO "task05: Failed to recognize currencies");
-    }
+    convert(money, find_currency(in_currency), find_currency(out_currency));
     return 0;
 }
 
 
 static void __exit task05_exit(void)
 {
+    list_free();
     printk(KERN_INFO "task05: Bye...\n");
 }
 
