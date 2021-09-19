@@ -56,30 +56,22 @@ struct currency create(char* id,
     return currency;
 }
 
-
-void print_list(void){
-    struct currency_list *temp;
-    list_for_each_entry(temp, &head_node, list) {
-        printk(KERN_INFO "Currency: %s", temp->data.id);
-    }
-}
-
-void list_free(void){
-
+void clean_list(void){
     struct currency_list *temp;
     struct list_head *cursor, *temp_storage;
 
     list_for_each_safe(cursor, temp_storage, &head_node){
         temp = list_entry(cursor, struct currency_list, list);
-        printk(KERN_INFO "deleting item from list %s", temp->data.id);
         list_del(cursor);
-        printk(KERN_INFO "freeing item %s", temp->data.id);
         kfree(temp);
     }
     if(!list_empty(&head_node)){
-        printk(KERN_INFO " List is not empty after freeing! ");
+        printk(KERN_WARNING "List is not empty after freeing!");
+    } else {
+        printk(KERN_WARNING "List cleaned");
     }
 }
+
 
 struct currency * find_currency(const char *id){
     struct currency_list *temp = NULL, *result = NULL;
@@ -106,16 +98,6 @@ void add_list_node(struct currency currency){
 }
 
 
-/*void test_list(void){
-
-    add_list_node(create("EUR", 1, 1, 1, 1));
-    add_list_node(create("UAH", 31379, 1000000, 319108, 10000));
-    add_list_node(create("RUB", 1154, 100000, 86576, 1000));
-
-    print_list();
-    list_free();
-}*/
-
 int power(int x, short y)
 {
     if (y == 0)
@@ -125,6 +107,7 @@ int power(int x, short y)
     else
         return x*power(x, (short)(y/2))*power(x, (short)(y/2));
 }
+
 
 static const char* get_zeros_str(short zeros){
     static char str[16];
@@ -224,7 +207,7 @@ static int __init task05_init(void)
 
 static void __exit task05_exit(void)
 {
-    list_free();
+    clean_list();
     printk(KERN_INFO "task05: Bye...\n");
 }
 
