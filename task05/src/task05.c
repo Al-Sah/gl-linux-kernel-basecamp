@@ -1,10 +1,11 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
-#include <linux/sched.h>
+#include <linux/version.h>
+#include <linux/uaccess.h>
 #include <linux/list.h>
 #include <linux/slab.h>
-#include <asm/uaccess.h>
+#include <linux/fs.h>
 
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -12,9 +13,44 @@ MODULE_AUTHOR("Al_Sah");
 MODULE_DESCRIPTION("Simple currency convertor");
 MODULE_VERSION("0.1");
 
+
 // Euro will be a basic currency
-#define MAX_CURRENCY_STR_SIZE 6
+
+static long money = 100;
+static char in_currency[DNAME_INLINE_LEN] = "UAH";
+static char out_currency[DNAME_INLINE_LEN] = "EUR";
+
+module_param(money, long, S_IRUSR);
+MODULE_PARM_DESC(money, "A number to convert");
+
+module_param_string(in_currency, in_currency, DNAME_INLINE_LEN, 0);
+MODULE_PARM_DESC(in_currency, "Currency \"from\" ");
+
+module_param_string(out_currency, out_currency, DNAME_INLINE_LEN, 0);
+MODULE_PARM_DESC(out_currency, "Currency \"to\"");
+
+// Number of digits
+#define MAX_CURRENCY_DIGITS 20
 #define FLOAT_PART_SIZE 1000
+#define PROC_DIRECTORY  "currency_convertor"
+
+
+static struct proc_dir_entry *proc_dir;
+
+static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
+static ssize_t proc_write(__attribute__((unused)) struct file *file_p, const char __user *buffer, size_t length, __attribute__((unused)) loff_t *offset);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
+static const struct proc_ops proc_io_fops = {
+    .proc_write = proc_write,
+    .proc_read  = proc_read,
+};
+#else
+static struct file_operations proc_io_fops = {
+        .write = proc_write,
+        .read  = proc_read
+};
+#endif
 
 
 struct list_head head_node = LIST_HEAD_INIT(head_node);
@@ -26,7 +62,7 @@ struct conversion_rule{
 };
 
 struct currency {
-    char id[MAX_CURRENCY_STR_SIZE];
+    char id[DNAME_INLINE_LEN];
     struct conversion_rule to_eur;
     struct conversion_rule from_eur;
 };
@@ -34,6 +70,7 @@ struct currency {
 struct currency_list{
     struct list_head list;
     struct currency data;
+    struct proc_dir_entry *proc;
 };
 
 struct currency create(char* id,
@@ -63,12 +100,32 @@ void clean_list(void){
     list_for_each_safe(cursor, temp_storage, &head_node){
         temp = list_entry(cursor, struct currency_list, list);
         list_del(cursor);
+        if(proc_dir != NULL && temp->proc != NULL){
+            remove_proc_entry(temp->data.id, proc_dir);
+        }
         kfree(temp);
     }
     if(!list_empty(&head_node)){
         printk(KERN_WARNING "List is not empty after freeing!");
     } else {
         printk(KERN_WARNING "List cleaned");
+    }
+}
+
+
+void delete_currency(const char *id){
+    struct currency_list *temp;
+    struct list_head *cursor, *temp_storage;
+
+    list_for_each_safe(cursor, temp_storage, &head_node){
+        temp = list_entry(cursor, struct currency_list, list);
+        if(strcmp(temp->data.id, id) == 0){
+            list_del(cursor);
+            if(proc_dir != NULL && temp->proc != NULL){
+                remove_proc_entry(temp->data.id, proc_dir);
+            }
+            kfree(temp);
+        }
     }
 }
 
@@ -89,11 +146,34 @@ struct currency * find_currency(const char *id){
     return &result->data;
 }
 
+
+static inline int init_proc_interface(void)
+{
+    proc_dir = proc_mkdir(PROC_DIRECTORY, NULL);
+    if (proc_dir == NULL){
+        return -EFAULT;
+    }
+    return 0;
+}
+
+
+static inline struct proc_dir_entry * create_proc_entry(const char *name)
+{
+    static struct proc_dir_entry *res = NULL;
+    if (proc_dir == NULL){
+        return NULL;
+    }
+    res = proc_create(name, 0, proc_dir, &proc_io_fops);
+    return res;
+}
+
+
 void add_list_node(struct currency currency){
     struct currency_list *temp_node = NULL;
 
     temp_node = kmalloc(sizeof(struct currency_list), GFP_KERNEL);
     temp_node->data = currency;
+    temp_node->proc = create_proc_entry(currency.id);
     list_add_tail(&temp_node->list, &head_node);
 }
 
@@ -128,19 +208,6 @@ static int get_float_part(long res_float_part, uint32_t shift){
     return (int)res;
 }
 
-static int money = 100;
-static char *in_currency = "UAH";
-static char *out_currency = "EUR";
-
-module_param(money, int, S_IRUSR);
-MODULE_PARM_DESC(money, "A number to convert");
-
-module_param(in_currency, charp, 0000);
-MODULE_PARM_DESC(in_currency, "Currency \"from\" ");
-
-module_param(out_currency, charp, 0000);
-MODULE_PARM_DESC(out_currency, "Currency \"to\"");
-
 
 static short get_zeros(unsigned int a, unsigned int b ){
     short zeros = 0;
@@ -152,16 +219,20 @@ static short get_zeros(unsigned int a, unsigned int b ){
     return zeros;
 }
 
-static void convert(int sum, const struct currency* in_curr, const struct currency* out_curr) {
+static char* convert(long sum, const struct currency* in_curr, const struct currency* out_curr) {
 
-    char result_amount[16] = "";
+    static char result_amount[16] = "";
     long res_int_part;
     long res_float_part;
     long int tmp;
 
     if(in_curr == NULL || out_curr == NULL){
         printk(KERN_INFO "Input contains null ptr: in %p, out %p", in_curr, out_curr);
-        return;
+        return "";
+    }
+    if(strcmp(in_curr->id, out_curr->id) == 0){
+        snprintf(result_amount, sizeof(result_amount), "%ld\n", money);
+        return result_amount;
     }
 
     tmp = (long long int)sum * (long long int)in_curr->to_eur.multiplier * (long long int)out_curr->from_eur.multiplier;
@@ -175,15 +246,62 @@ static void convert(int sum, const struct currency* in_curr, const struct curren
         short zeros = get_zeros(sum * in_curr->to_eur.multiplier * out_curr->from_eur.multiplier,
                                 in_curr->to_eur.divider * out_curr->from_eur.divider);
 
-        snprintf(result_amount, sizeof(result_amount), "%ld.%s%d", res_int_part, get_zeros_str(zeros), get_float_part(res_float_part,(uint32_t)power(10, zeros)));
+        snprintf(result_amount, sizeof(result_amount), "%ld.%s%d\n", res_int_part, get_zeros_str(zeros), get_float_part(res_float_part,(uint32_t)power(10, zeros)));
     } else {
-        snprintf(result_amount, sizeof(result_amount), "%ld.%d", res_int_part, get_float_part(res_float_part,1));
+        snprintf(result_amount, sizeof(result_amount), "%ld.%d\n", res_int_part, get_float_part(res_float_part,1));
     }
-    printk(KERN_INFO "Result: %s\n", result_amount);
+    return result_amount;
+}
+
+static ssize_t proc_read(struct file *file_p, char __user *buffer, size_t length, loff_t *offset)
+{
+    static char conversion_result[1000];
+    if( *offset != 0 ) {
+        return 0;
+    }
+    strcpy(out_currency, file_p->f_path.dentry->d_iname);
+    snprintf(conversion_result, sizeof(conversion_result),
+             "Converting %s to %s; Amount: %ld. Res: %s\n",
+             in_currency, out_currency, money,
+             convert(money, find_currency(in_currency), find_currency(out_currency)));
+    length = strlen(conversion_result);
+
+    if( copy_to_user( buffer, conversion_result, length)) {
+        printk(KERN_WARNING ": Failed to copy some chars");
+        return -EINVAL;
+    }
+    printk(KERN_WARNING ": PROC READ %lu", (ulong)length);
+    *offset = (loff_t)length;
+    return (ssize_t)length;
+}
+
+static ssize_t proc_write(struct file *file_p, const char __user *buffer, size_t length, __attribute__((unused)) loff_t *offset)
+{
+    size_t failed;
+    long res;
+
+    char tmp_buffer[MAX_CURRENCY_DIGITS];
+    if(length > MAX_CURRENCY_DIGITS){
+        length = MAX_CURRENCY_DIGITS;
+    }
+    failed = copy_from_user(tmp_buffer, buffer, length);
+
+    if(kstrtol(tmp_buffer, 10, &res) == 0){
+        money = res;
+    }
+    strcpy(in_currency, file_p->f_path.dentry->d_iname);
+    if (failed != 0){
+        printk(KERN_WARNING ": Failed to copy %lu from %lu \n", (ulong)failed, (ulong)length);
+    }
+    return (ssize_t)length;
 }
 
 static int __init task05_init(void)
 {
+    int error = init_proc_interface();
+    if(error){
+       return error;
+    }
 
     add_list_node(create("EUR", 1, 1, 1, 1));
     add_list_node(create("UAH", 31379, 1000000, 319108, 10000));
@@ -197,7 +315,7 @@ static int __init task05_init(void)
     convert(100, find_currency("UAH"), find_currency("ZZZ"));
 
     printk(KERN_INFO "task05: Hello user !! It is currency convertor\n");
-    printk(KERN_INFO "task05: Input amount of money: %d\n", money);
+    printk(KERN_INFO "task05: Input amount of money: %ld\n", (long) money);
     printk(KERN_INFO "task05: Converting from %s to %s", in_currency, out_currency);
 
     convert(money, find_currency(in_currency), find_currency(out_currency));
@@ -208,6 +326,7 @@ static int __init task05_init(void)
 static void __exit task05_exit(void)
 {
     clean_list();
+    remove_proc_entry(PROC_DIRECTORY, NULL);
     printk(KERN_INFO "task05: Bye...\n");
 }
 
