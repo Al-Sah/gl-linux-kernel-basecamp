@@ -3,6 +3,7 @@
 #include <linux/proc_fs.h>
 #include <linux/version.h>
 #include <linux/uaccess.h>
+#include <linux/device.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/fs.h>
@@ -12,10 +13,10 @@ MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Al_Sah");
 MODULE_DESCRIPTION("Simple currency convertor");
 MODULE_VERSION("0.1");
-
+#define CLASS_ATTR(_name, _mode, _show, _store) struct class_attribute class_attr_##_name = __ATTR(_name, _mode, _show, _store)
 
 // Euro will be a basic currency
-
+static struct class *currency_convertor_class;
 static long money = 100;
 static char in_currency[DNAME_INLINE_LEN] = "UAH";
 static char out_currency[DNAME_INLINE_LEN] = "EUR";
@@ -35,10 +36,57 @@ MODULE_PARM_DESC(out_currency, "Currency \"to\"");
 #define PROC_DIRECTORY  "currency_convertor"
 
 
+
 static struct proc_dir_entry *proc_dir;
 
 static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
 static ssize_t proc_write(__attribute__((unused)) struct file *file_p, const char __user *buffer, size_t length, __attribute__((unused)) loff_t *offset);
+
+static ssize_t sys_show(__attribute__((unused)) struct class *class,  __attribute__((unused)) struct class_attribute *attr, char *buf ) {
+    return (ssize_t)strlen(buf);
+}
+
+static ssize_t sys_store(__attribute__((unused)) struct class *class,  __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count ) {
+    return (ssize_t)count;
+}
+
+
+static ssize_t add_currency_show(__attribute__((unused)) struct class *class, __attribute__((unused)) struct class_attribute *attr, char *buf ) {
+    return (ssize_t)strlen(buf);
+}
+
+static ssize_t add_currency_write(__attribute__((unused)) struct class *class,  __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count ) {
+    //char [];
+    //PAGE_SIZE
+/*    char temp_buffer[count];
+    int i = 0;
+    char *token = test;
+    char *end = test;
+    for(i = 0; i < 5; i++){
+        strsep(&end, ":");
+        token = end;
+        if(token == NULL){
+
+        }
+    }*/
+    return (ssize_t)count;
+}
+
+static ssize_t delete_currency_show(
+        __attribute__((unused)) struct class *class,
+        __attribute__((unused)) struct class_attribute *attr,
+        char *buf );
+
+static ssize_t delete_currency_write(
+        __attribute__((unused)) struct class *class,
+        __attribute__((unused)) struct class_attribute *attr,
+        const char *buf, size_t count );
+
+
+
+
+CLASS_ATTR( add_currency, ( S_IWUSR | S_IRUGO ), &add_currency_show, &add_currency_write );
+CLASS_ATTR( delete_currency, ( S_IWUSR | S_IRUGO ), &delete_currency_show, &delete_currency_write );
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
 static const struct proc_ops proc_io_fops = {
@@ -71,6 +119,7 @@ struct currency_list{
     struct list_head list;
     struct currency data;
     struct proc_dir_entry *proc;
+    struct class_attribute attribute;
 };
 
 struct currency create(char* id,
@@ -103,6 +152,7 @@ void clean_list(void){
         if(proc_dir != NULL && temp->proc != NULL){
             remove_proc_entry(temp->data.id, proc_dir);
         }
+        class_remove_file( currency_convertor_class, &temp->attribute);
         kfree(temp);
     }
     if(!list_empty(&head_node)){
@@ -111,6 +161,7 @@ void clean_list(void){
         printk(KERN_WARNING "List cleaned");
     }
 }
+
 
 
 void delete_currency(const char *id){
@@ -124,11 +175,26 @@ void delete_currency(const char *id){
             if(proc_dir != NULL && temp->proc != NULL){
                 remove_proc_entry(temp->data.id, proc_dir);
             }
+            class_remove_file( currency_convertor_class, &temp->attribute);
             kfree(temp);
         }
     }
 }
 
+static ssize_t delete_currency_show(__attribute__((unused)) struct class *class, __attribute__((unused)) struct class_attribute *attr, char *buf ) {
+    strcpy(buf, " You have to write currency here, like RUB, UAH, EUR ...\n");
+    return (ssize_t)strlen(buf);
+}
+
+static ssize_t delete_currency_write(__attribute__((unused)) struct class *class,  __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count ) {
+    char currency_id[DNAME_INLINE_LEN] = "";
+    count = count > DNAME_INLINE_LEN ? DNAME_INLINE_LEN : count;
+    if (copy_from_user(currency_id, buf, count)){
+        printk(KERN_WARNING ": Failed to copy some chars ((( ");
+    }
+    delete_currency(currency_id);
+    return (ssize_t)count;
+}
 
 struct currency * find_currency(const char *id){
     struct currency_list *temp = NULL, *result = NULL;
@@ -168,12 +234,27 @@ static inline struct proc_dir_entry * create_proc_entry(const char *name)
 }
 
 
+
+
+
+
+
 void add_list_node(struct currency currency){
     struct currency_list *temp_node = NULL;
+    struct class_attribute class_attr_node = {
+            .attr = {.name = currency.id, .mode = VERIFY_OCTAL_PERMISSIONS(( S_IWUSR | S_IRUGO )) },
+            .show	= sys_show,
+            .store	= sys_store,
+    };
 
     temp_node = kmalloc(sizeof(struct currency_list), GFP_KERNEL);
     temp_node->data = currency;
     temp_node->proc = create_proc_entry(currency.id);
+    temp_node->attribute = class_attr_node;
+
+    if (class_create_file(currency_convertor_class, &class_attr_node) != 0) {
+        printk(KERN_WARNING ": Failed to create sys_fs 'settings' file");
+    }
     list_add_tail(&temp_node->list, &head_node);
 }
 
@@ -296,12 +377,32 @@ static ssize_t proc_write(struct file *file_p, const char __user *buffer, size_t
     return (ssize_t)length;
 }
 
+
+
+
 static int __init task05_init(void)
 {
     int error = init_proc_interface();
     if(error){
        return error;
     }
+    currency_convertor_class = class_create(THIS_MODULE, "currency_convertor_class");
+    if (IS_ERR(currency_convertor_class)) {
+        printk(KERN_WARNING ": Failed to create sys class");
+        return error;
+    }
+
+    error = class_create_file(currency_convertor_class, &class_attr_delete_currency);
+    if(error){
+        printk(KERN_WARNING ": Failed to create sys_fs 'delete_currency' file");
+        return error;
+    }
+    error = class_create_file(currency_convertor_class, &class_attr_add_currency);
+    if(error){
+        printk(KERN_WARNING ": Failed to create sys_fs 'add_currency' file");
+        return error;
+    }
+
 
     add_list_node(create("EUR", 1, 1, 1, 1));
     add_list_node(create("UAH", 31379, 1000000, 319108, 10000));
@@ -327,6 +428,9 @@ static void __exit task05_exit(void)
 {
     clean_list();
     remove_proc_entry(PROC_DIRECTORY, NULL);
+    class_remove_file( currency_convertor_class, &class_attr_add_currency );
+    class_remove_file( currency_convertor_class, &class_attr_delete_currency );
+    class_destroy(currency_convertor_class);
     printk(KERN_INFO "task05: Bye...\n");
 }
 
