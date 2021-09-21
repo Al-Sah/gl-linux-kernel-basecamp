@@ -16,7 +16,11 @@ MODULE_VERSION("0.1");
 #define MODULE_TAG      "time_manager"
 #define PROC_DIRECTORY  "time_manager"
 
-unsigned long my_jiffies = 0;
+#define generate_str(number, str)                               \
+if (number < 10){ snprintf(str, sizeof(str), "0%hd", number);   \
+} else { snprintf(str, sizeof(str), "%hd", number);}
+
+
 unsigned long jiffies_on_last_call = 0;
 
 static char* proc_read_msg  = "Check result in dmesg\n";
@@ -24,6 +28,7 @@ static char* proc_read_msg  = "Check result in dmesg\n";
 static struct proc_dir_entry *proc_dir;
 static struct proc_dir_entry *proc_test_file;
 
+static char* get_time_str(ulong current_jiffies);
 static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
@@ -104,7 +109,6 @@ static void delete_proc_entry(void)
 
 static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset)
 {
-    ulong current_jiffies;
     length = strlen(proc_read_msg);
 
     if( *offset != 0 ) {
@@ -121,14 +125,31 @@ static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __use
         jiffies_on_last_call = jiffies;
         return (ssize_t)length;
     }
-    current_jiffies = jiffies - jiffies_on_last_call;
 
-    printk( KERN_INFO " From last read:  %lu\n", current_jiffies / HZ );
+    printk( KERN_INFO " From last read:  %s\n", get_time_str(jiffies - jiffies_on_last_call) );
     jiffies_on_last_call = jiffies;
     return (ssize_t)length;
 }
 
 
+static char* get_time_str(ulong current_jiffies){
+    static char res[10];
+    size_t _seconds = current_jiffies / HZ;
+    short hours, minutes, seconds;
+    char hours_str[4], minutes_str[3], seconds_str[3];
+
+    hours = (short)(_seconds / 3600);
+    generate_str(hours, hours_str)
+
+    minutes = (short)((_seconds / 60) % 60);
+    generate_str(minutes, minutes_str)
+
+    seconds = (short)(_seconds % 60);
+    generate_str(seconds, seconds_str)
+
+    snprintf(res, sizeof(res), "%s:%s:%s", hours_str,minutes_str,seconds_str);
+    return res;
+}
 /*
 static int create_buffer(char **buffer)
 {
