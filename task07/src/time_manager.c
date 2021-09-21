@@ -3,6 +3,7 @@
 #include <linux/proc_fs.h>
 #include <linux/module.h>
 #include <linux/jiffies.h>
+#include <linux/device.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 //#include <linux/time.h>
@@ -15,14 +16,26 @@ MODULE_AUTHOR("Al_Sah");
 MODULE_DESCRIPTION("Simple time manager");
 MODULE_VERSION("0.1");
 
-
 #define MODULE_TAG      "time_manager"
 #define PROC_DIRECTORY  "time_manager"
+#define SETTINGS_BUFFER_SIZE 8
 
+
+#define CLASS_ATTR(_name, _mode, _show, _store) struct class_attribute class_attr_##_name = __ATTR(_name, _mode, _show, _store)
 #define generate_str(number, str)                               \
 if ((number) < 10){ snprintf(str, sizeof(str), "0%hd", number);   \
 } else { snprintf(str, sizeof(str), "%hd", number);}
+static char settings_buffer[ SETTINGS_BUFFER_SIZE ] = "0";
 
+short full_mode = 0;
+static ssize_t sys_show(__attribute__((unused)) struct class *class, __attribute__((unused)) struct class_attribute *attr, char *buf );
+static ssize_t sys_store(__attribute__((unused)) struct class *class, __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count );
+
+CLASS_ATTR( settings, ( S_IWUSR | S_IRUGO ), &sys_show, &sys_store );
+
+
+
+static struct class *time_manager;
 unsigned long jiffies_on_last_call = 0;
 
 static char* proc_read_msg  = "Check result in dmesg\n";
@@ -79,6 +92,16 @@ static int __init time_manager_init(void)
         my_timer.function = timer_function;
         add_timer(&my_timer);*/
 
+        time_manager = class_create(THIS_MODULE, "time_manager");
+        if (IS_ERR(time_manager)) {
+            printk(KERN_WARNING MODULE_TAG": Failed to create sys class");
+            break;
+        }
+        if (class_create_file(time_manager, &class_attr_settings) != 0) {
+            printk(KERN_WARNING MODULE_TAG ": Failed to create sys_fs 'settings' file");
+            break;
+        }
+
         printk(KERN_INFO MODULE_TAG ": Loaded\n");
         return 0;
     } while (42);
@@ -90,6 +113,8 @@ static int __init time_manager_init(void)
 
 static void __exit time_manager_exit(void){
     delete_proc_entry();
+    class_remove_file( time_manager, &class_attr_settings );
+    class_destroy( time_manager );
     //del_timer(&my_timer);
     printk(KERN_INFO MODULE_TAG ": Exited\n");
 }
@@ -123,7 +148,12 @@ static void delete_proc_entry(void)
 {
     if (proc_test_file)
     {
-        remove_proc_entry("get_time", proc_dir);
+        remove_proc_entry("last_read_time", proc_dir);
+        proc_test_file = NULL;
+    }
+    if (proc_absolute_time)
+    {
+        remove_proc_entry("absolute_time", proc_dir);
         proc_test_file = NULL;
     }
     if (proc_dir)
@@ -151,8 +181,12 @@ static ssize_t test_file_read(__attribute__((unused)) struct file *file_p, char 
         jiffies_on_last_call = jiffies;
         return (ssize_t)length;
     }
+    if(full_mode){
+        printk( KERN_INFO " From last read:  %s\n", get_time_str((jiffies - jiffies_on_last_call) / HZ) );
+    } else{
+        printk( KERN_INFO " From last read:  %lu\n", (ulong)(jiffies - jiffies_on_last_call) / HZ);
+    }
 
-    printk( KERN_INFO " From last read:  %s\n", get_time_str(jiffies - jiffies_on_last_call) );
     jiffies_on_last_call = jiffies;
     return (ssize_t)length;
 }
@@ -200,6 +234,26 @@ static char* get_time_str(size_t seconds_to_convert){
     snprintf(res, sizeof(res), "%s:%s:%s", hours_str,minutes_str,seconds_str);
     return res;
 }
+
+
+
+static ssize_t sys_show(__attribute__((unused)) struct class *class,
+                        __attribute__((unused)) struct class_attribute *attr, char *buf ) {
+    strcpy(buf, settings_buffer);
+    return (ssize_t)strlen(buf);
+}
+
+static ssize_t sys_store(__attribute__((unused)) struct class *class,
+                         __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count ) {
+    switch (buf[0]) {
+        case '0': strcpy(settings_buffer, "0\0"); full_mode = 0; break;
+        case '1': strcpy(settings_buffer, "1\0"); full_mode = 1; break;
+        default : printk( KERN_WARNING MODULE_TAG": Failed to update full_mode");
+    }
+    return (ssize_t)count;
+}
+
+
 /*
 static int create_buffer(char **buffer)
 {
