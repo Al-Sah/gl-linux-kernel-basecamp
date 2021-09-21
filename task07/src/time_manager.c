@@ -2,6 +2,7 @@
 #include <linux/uaccess.h>
 #include <linux/proc_fs.h>
 #include <linux/module.h>
+#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/fs.h>
@@ -15,7 +16,8 @@ MODULE_VERSION("0.1");
 #define MODULE_TAG      "time_manager"
 #define PROC_DIRECTORY  "time_manager"
 
-
+unsigned long my_jiffies = 0;
+unsigned long jiffies_on_last_call = 0;
 
 static char* proc_read_msg  = "Check result in dmesg\n";
 
@@ -102,17 +104,27 @@ static void delete_proc_entry(void)
 
 static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset)
 {
+    ulong current_jiffies;
     length = strlen(proc_read_msg);
 
     if( *offset != 0 ) {
         return 0;
     }
+    *offset = (loff_t)length;
 
     if( copy_to_user( buffer, proc_read_msg, length )) {
         printk(KERN_WARNING MODULE_TAG ": Failed to copy some chars");
         return -EINVAL;
     }
-    *offset = (loff_t)length;
+    if(jiffies_on_last_call == 0){
+        printk(KERN_INFO MODULE_TAG ": First time reading test file");
+        jiffies_on_last_call = jiffies;
+        return (ssize_t)length;
+    }
+    current_jiffies = jiffies - jiffies_on_last_call;
+
+    printk( KERN_INFO " From last read:  %lu\n", current_jiffies / HZ );
+    jiffies_on_last_call = jiffies;
     return (ssize_t)length;
 }
 
