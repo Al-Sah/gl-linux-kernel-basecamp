@@ -2,13 +2,11 @@
 #include <linux/uaccess.h>
 #include <linux/proc_fs.h>
 #include <linux/module.h>
-#include <linux/jiffies.h>
 #include <linux/device.h>
 #include <linux/kernel.h>
-#include <linux/slab.h>
-//#include <linux/time.h>
 #include <linux/fs.h>
 #include <linux/ktime.h>
+#include <linux/timekeeping.h>
 
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -20,11 +18,15 @@ MODULE_VERSION("0.1");
 #define PROC_DIRECTORY  "time_manager"
 #define SETTINGS_BUFFER_SIZE 8
 
+#define NS_IN_SEC 1000000000
+#define NS_IN_MS 1000000
+#define NS_IN_US 1000
+
 
 #define CLASS_ATTR(_name, _mode, _show, _store) struct class_attribute class_attr_##_name = __ATTR(_name, _mode, _show, _store)
 #define generate_str(number, str)                               \
-if ((number) < 10){ snprintf(str, sizeof(str), "0%hd", number);   \
-} else { snprintf(str, sizeof(str), "%hd", number);}
+if ((number) < 10){ snprintf(str, sizeof(str), "0%d", number);   \
+} else { snprintf(str, sizeof(str), "%d", number);}
 static char settings_buffer[ SETTINGS_BUFFER_SIZE ] = "0";
 
 short full_mode = 0;
@@ -33,7 +35,9 @@ static ssize_t sys_store(__attribute__((unused)) struct class *class, __attribut
 
 CLASS_ATTR( settings, ( S_IWUSR | S_IRUGO ), &sys_show, &sys_store );
 
-
+#ifdef CONFIG_X86_64
+static char* get_time_str_ns(u64 src);
+#endif
 
 static struct class *time_manager;
 unsigned long jiffies_on_last_call = 0;
@@ -192,22 +196,36 @@ static ssize_t test_file_read(__attribute__((unused)) struct file *file_p, char 
 }
 
 static ssize_t get_absolute_time(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset){
-    char  boot_time[10], res[60]; // realtime[10],
-    //struct timespec timespec_now;
-
-
+    char  boot_time[22], real_time[22], mono_time[22], res[512];
+    u64 real, boot, mono;
+#ifdef CONFIG_X86_32
+    struct timespec64 ts;
+#endif
     if( *offset != 0 ) {
         return 0;
     }
     *offset = (loff_t)length;
 
-    //getnstimeofday(&timespec_now);
-    strcpy(boot_time, get_time_str(jiffies / HZ));
-    //strcpy(realtime, get_time_str(timespec_now.tv_sec));
+    mono = ktime_get_mono_fast_ns();
+    boot = ktime_get_boot_fast_ns();
+    real = ktime_get_real_fast_ns();
 
-    snprintf(res, sizeof(res), "Time from boot: %s\n", boot_time);
+#ifdef CONFIG_X86_32
+    ts = ktime_to_timespec64(real);
+    strcpy(real_time, get_time_str(ts.tv_sec));
+
+    ts = ktime_to_timespec64(boot);
+    strcpy(boot_time, get_time_str(ts.tv_sec));
+
+    ts = ktime_to_timespec64(mono);
+    strcpy(mono_time, get_time_str(ts.tv_sec));
+#else
+    strcpy(real_time, get_time_str_ns(real));
+    strcpy(boot_time, get_time_str_ns(boot));
+    strcpy(mono_time, get_time_str_ns(mono));
+#endif
+    snprintf(res, sizeof(res), " boot_time: %s\n real_time: %s\n mono_time: %s\n", boot_time, real_time, mono_time);
     length = strlen(res);
-
 
     if( copy_to_user( buffer, res, length )) {
         printk(KERN_WARNING MODULE_TAG ": Failed to copy some chars");
@@ -222,7 +240,7 @@ static char* get_time_str(size_t seconds_to_convert){
     short hours, minutes, seconds;
     char hours_str[4], minutes_str[3], seconds_str[3];
 
-    hours = (short)(seconds_to_convert / 3600);
+    hours = (short)((seconds_to_convert / 3600)  % 24);
     generate_str(hours, hours_str)
 
     minutes = (short)((seconds_to_convert / 60) % 60);
@@ -235,6 +253,24 @@ static char* get_time_str(size_t seconds_to_convert){
     return res;
 }
 
+#ifdef CONFIG_X86_64
+static char* get_time_str_ns(u64 src){
+    static char res[22];
+    char hours[3], min[3], sec[3];
+
+    ushort ms, us, ns;
+    generate_str((short)(((src / 3600) / NS_IN_SEC) % 24), hours)
+    generate_str((short)((src / 60 / NS_IN_SEC) % 60), min)
+    generate_str((short)((src / NS_IN_SEC) % 60), sec)
+
+    ns = (ushort)src % 1000;
+    us = (ushort)(src / NS_IN_US) % 1000;
+    ms = (ushort)(src / NS_IN_MS) % 1000;
+
+    snprintf(res, sizeof(res), "%s:%s:%s %d:%d:%d", hours, min, sec, ms, us, ns);
+    return res;
+}
+#endif
 
 
 static ssize_t sys_show(__attribute__((unused)) struct class *class,
