@@ -4,6 +4,7 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/kernel.h>
+#include <linux/random.h>
 #include <linux/fs.h>
 #include <linux/ktime.h>
 #include <linux/timekeeping.h>
@@ -17,6 +18,8 @@ MODULE_VERSION("0.1");
 #define MODULE_TAG      "time_manager"
 #define PROC_DIRECTORY  "time_manager"
 #define SETTINGS_BUFFER_SIZE 8
+
+#define EACH_SECONDS 5
 
 #define NS_IN_SEC 1000000000
 #define NS_IN_MS 1000000
@@ -72,14 +75,11 @@ static struct file_operations proc_absolute_time_fops = {
 static int  create_proc_entry(void);
 static void delete_proc_entry(void);
 
-/*static int create_buffer(char **buffer);
-static void clean_buffer(char** buffer);
 struct timer_list my_timer;
 static void timer_function(struct timer_list *data){
-    printk("Time up");
-    // modify the timer for next time
-    mod_timer(&my_timer, jiffies + HZ / 2);
-}*/
+    printk(KERN_INFO MODULE_TAG": Random value: %d", get_random_int());
+    mod_timer(&my_timer, jiffies + EACH_SECONDS * HZ);
+}
 
 
 static int __init time_manager_init(void)
@@ -91,10 +91,10 @@ static int __init time_manager_init(void)
             printk(KERN_WARNING MODULE_TAG": Failed to create proc interface");
             break;
         }
-        /*init_timer_key(&my_timer, timer_function, 0, NULL, NULL);
-        my_timer.expires = jiffies + HZ ;
+        init_timer_key(&my_timer, timer_function, 0, NULL, NULL);
+        my_timer.expires = jiffies + EACH_SECONDS * HZ;
         my_timer.function = timer_function;
-        add_timer(&my_timer);*/
+        add_timer(&my_timer);
 
         time_manager = class_create(THIS_MODULE, "time_manager");
         if (IS_ERR(time_manager)) {
@@ -119,7 +119,7 @@ static void __exit time_manager_exit(void){
     delete_proc_entry();
     class_remove_file( time_manager, &class_attr_settings );
     class_destroy( time_manager );
-    //del_timer(&my_timer);
+    del_timer(&my_timer);
     printk(KERN_INFO MODULE_TAG ": Exited\n");
 }
 
@@ -282,29 +282,16 @@ static ssize_t sys_show(__attribute__((unused)) struct class *class,
 static ssize_t sys_store(__attribute__((unused)) struct class *class,
                          __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count ) {
     switch (buf[0]) {
-        case '0': strcpy(settings_buffer, "0\0"); full_mode = 0; break;
-        case '1': strcpy(settings_buffer, "1\0"); full_mode = 1; break;
-        default : printk( KERN_WARNING MODULE_TAG": Failed to update full_mode");
+        case '0':
+            strcpy(settings_buffer, "0\0");
+            full_mode = 0;
+            break;
+        case '1':
+            strcpy(settings_buffer, "1\0");
+            full_mode = 1;
+            break;
+        default :
+            printk(KERN_WARNING MODULE_TAG": Failed to update full_mode");
     }
-    return (ssize_t)count;
+    return (ssize_t) count;
 }
-
-
-/*
-static int create_buffer(char **buffer)
-{
-    *buffer = (char*) kmalloc(BUFFER_SIZE, GFP_KERNEL);
-    if (*buffer == NULL){
-        printk(KERN_WARNING MODULE_TAG": Failed to create buffer");
-        return -1;
-    }
-    return 0;
-}
-
-static void clean_buffer(char** buffer)
-{
-    if (*buffer) {
-        kfree(*buffer);
-        *buffer = NULL;
-    }
-}*/
