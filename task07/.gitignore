@@ -3,7 +3,7 @@
 
 *build*
 /bin
-
+make-all.log
 /src/Makefile
 
 *.idea
