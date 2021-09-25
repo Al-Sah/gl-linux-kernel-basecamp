@@ -187,10 +187,12 @@ static ssize_t delete_currency_show(__attribute__((unused)) struct class *class,
 }
 
 static ssize_t delete_currency_write(__attribute__((unused)) struct class *class,  __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count ) {
-    char currency_id[DNAME_INLINE_LEN] = "";
-    count = count > DNAME_INLINE_LEN ? DNAME_INLINE_LEN : count;
-    if (copy_from_user(currency_id, buf, count)){
-        printk(KERN_WARNING ": Failed to copy some chars ((( ");
+    char currency_id[10];
+    count = count > 10 ? 10 : count;
+    strncpy(currency_id, buf, count);
+
+    if(currency_id[count-1] == '\n'){
+        currency_id[count-1] = '\0';
     }
     delete_currency(currency_id);
     return (ssize_t)count;
@@ -235,27 +237,46 @@ static inline struct proc_dir_entry * create_proc_entry(const char *name)
 
 
 
+/*
+static struct currency get_currency_from_str(char* buffer){
+    char *token = buffer, *substr = NULL;
+    struct currency new_currency;
+
+*/
+/*    while((substr = strsep(&token, ":")) != NULL ) {
+        if(kstrtol(substr, 10, &from_str) == 0){
+            result += from_str * to_seconds_converter;
+            to_seconds_converter /= 60;
+        }else{
+            return -1;
+        }
+    }*//*
+
+    return new_currency;
+}
 
 
-
-
-void add_list_node(struct currency currency){
-    struct currency_list *temp_node = NULL;
+*/
+struct class_attribute get_class_attribute(const char *name){
     struct class_attribute class_attr_node = {
-            .attr = {.name = currency.id, .mode = VERIFY_OCTAL_PERMISSIONS(( S_IWUSR | S_IRUGO )) },
+            .attr = {.name = name, .mode = VERIFY_OCTAL_PERMISSIONS(( S_IWUSR | S_IRUGO )) },
             .show	= sys_show,
             .store	= sys_store,
     };
+    return class_attr_node;
+}
 
-    temp_node = kmalloc(sizeof(struct currency_list), GFP_KERNEL);
-    temp_node->data = currency;
-    temp_node->proc = create_proc_entry(currency.id);
-    temp_node->attribute = class_attr_node;
 
-    if (class_create_file(currency_convertor_class, &class_attr_node) != 0) {
+void add_list_node(struct currency currency){
+    struct currency_list *new_node = kmalloc(sizeof(struct currency_list), GFP_KERNEL);
+    new_node->data = currency;
+    new_node->proc = create_proc_entry(currency.id);
+    new_node->attribute = get_class_attribute(new_node->data.id);
+
+    if (class_create_file(currency_convertor_class, &new_node->attribute) != 0) {
         printk(KERN_WARNING ": Failed to create sys_fs 'settings' file");
     }
-    list_add_tail(&temp_node->list, &head_node);
+    list_add_tail(&new_node->list, &head_node);
 }
 
 
