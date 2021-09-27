@@ -1,5 +1,5 @@
 
-TARGET  = task05
+TARGET  = currency_converter
 
 PROJECT_DIR=$(shell pwd)
 SRC_DIR	= $(PROJECT_DIR)/src
