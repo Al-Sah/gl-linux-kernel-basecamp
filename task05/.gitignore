@@ -3,6 +3,11 @@
 
 *build*
 /bin
+/src/Makefile
+/src/Makefile
+*.o.d
+*.order
+*.symvers
 
 *.idea
 *~
