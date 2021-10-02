@@ -29,6 +29,8 @@ static int __init memory_tester_init(void)
     run_kcalloc();
     run_kzalloc();
 
+    //KMALLOC_MAX_SIZE
+
     run_vmalloc();
     run_vzalloc();
 
@@ -142,7 +144,7 @@ void run_get_free_pages(void){
     u32 allocation_size = 1;
     ulong page;
 
-    while(0){
+    while(1){
         page = __get_free_pages(GFP_KERNEL, allocation_size);
 
         if(!page){
@@ -151,8 +153,8 @@ void run_get_free_pages(void){
         }
         printk(" [__get_free_pages] Allocated %u pages\n", allocation_size);
 
-        allocation_size +=1;
         free_pages(page, allocation_size);
+        allocation_size +=1;
     }
 }
 
@@ -160,7 +162,7 @@ void run_alloc_pages(void){
     u32 allocation_size = 1;
     struct page * page;
 
-    while(0){
+    while(1){
         page = alloc_pages(GFP_KERNEL, allocation_size);
 
         if(!page){
@@ -169,7 +171,7 @@ void run_alloc_pages(void){
         }
         printk(" [alloc_pages] Allocated %u pages\n", allocation_size);
 
+        __free_pages(page, allocation_size);
         allocation_size +=1;
-        free_pages(page, allocation_size);
     }
 }
