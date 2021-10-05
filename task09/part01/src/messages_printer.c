@@ -4,8 +4,11 @@
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
 #include <linux/device.h>
+#include <linux/kthread.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/fs.h>
+#include <linux/delay.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Al_Sah");
@@ -19,9 +22,10 @@ MODULE_VERSION("0.1");
 
 static char* proc_buffer = NULL;
 static char* sys_buffer = NULL;
+static char* print_buffer = NULL;
 static struct proc_dir_entry *proc_dir, *proc_data_file;
 
-static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
+//static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
 static ssize_t proc_write(__attribute__((unused)) struct file *file_p, const char __user *buffer, size_t length,
                           __attribute__((unused)) loff_t *offset);
 
@@ -49,27 +53,74 @@ static ssize_t sys_show(__attribute__((unused)) struct class *class, __attribute
 static ssize_t sys_store(__attribute__((unused)) struct class *class, __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count );
 CLASS_ATTR( settings, ( S_IWUSR | S_IRUGO ), &sys_show, &sys_store );
 
-long message_delay = 20;
-long output_time = 100;
+long message_delay = 200;
+long output_time = 1000;
+
+DEFINE_MUTEX(my_mutex);
 
 static void inline on_exit(void){
     delete_proc_entries();
     clean_buffer(&sys_buffer);
     clean_buffer(&proc_buffer);
+    clean_buffer(&print_buffer);
 
     class_remove_file( messages_printer, &class_attr_settings );
     class_destroy( messages_printer );
+}
+
+static int thread_callback(void * data){
+    size_t times, length;
+    int i;
+
+    mutex_lock(&my_mutex);
+
+    times = output_time/message_delay;
+    strcpy(print_buffer, (const char *)data);
+
+    // disable \n
+    length = strlen(proc_buffer);
+    print_buffer[length-1] = print_buffer[length-1] == '\n' ? ' ' : print_buffer[length-1];
+
+    printk(KERN_INFO MODULE_TAG": Start print '%s'\n", print_buffer);
+    for(i = 0; i < times; ++i){
+        printk(KERN_INFO MODULE_TAG": messages_printer '%s'\n", print_buffer);
+        msleep(message_delay);
+    }
+    printk(KERN_INFO MODULE_TAG": Finish print '%s'\n", print_buffer);
+    mutex_unlock(&my_mutex);
+    return 0;
+}
+
+void handle_message(char* message){
+    struct task_struct * task = NULL;
+    task = kthread_create(thread_callback, message, "messages_printer");
+
+    if (IS_ERR(task)) {
+        printk( KERN_ERR "test_thread: Failed to create task %ld \n", PTR_ERR(task));
+    } else {
+        wake_up_process(task);
+    }
+}
+
+int init_buffers(void){
+    int err;
+    err = create_buffer(&proc_buffer, BUFFER_SIZE);
+    if (err) {
+        return err;
+    }
+    err = create_buffer(&sys_buffer, BUFFER_SIZE);
+    if (err) {
+        return err;
+    }
+    err = create_buffer(&print_buffer, BUFFER_SIZE);
+    return err;
 }
 
 static int __init messages_printer_init(void)
 {
     int err;
     do {
-        err = create_buffer(&proc_buffer, BUFFER_SIZE);
-        if (err) {
-            break;
-        }
-        err = create_buffer(&sys_buffer, BUFFER_SIZE);
+        err = init_buffers();
         if (err) {
             break;
         }
@@ -78,7 +129,7 @@ static int __init messages_printer_init(void)
             printk(KERN_WARNING MODULE_TAG": Failed to create proc interface");
             break;
         }
-        messages_printer = class_create(THIS_MODULE, "string_processor_class");
+        messages_printer = class_create(THIS_MODULE, "messages_printer");
         if (IS_ERR(messages_printer)) {
             printk(KERN_WARNING MODULE_TAG": Failed to create sys class");
             break;
@@ -97,6 +148,7 @@ static int __init messages_printer_init(void)
 }
 
 static void __exit messages_printer_exit(void){
+    // TODO wait to finish all threads ?
     on_exit();
     printk(KERN_INFO MODULE_TAG ": Exited\n");
 }
@@ -122,7 +174,7 @@ static ssize_t proc_write(__attribute__((unused)) struct file *file_p,
     if (failed != 0){
         printk(KERN_WARNING MODULE_TAG ": Failed to copy %lu from %lu \n", (ulong)failed, (ulong)length);
     }
-    printk(KERN_INFO MODULE_TAG ": Message: '%s', %ld, %ld\n", proc_buffer, message_delay, output_time);
+    handle_message(proc_buffer);
     return (ssize_t)length;
 }
 
