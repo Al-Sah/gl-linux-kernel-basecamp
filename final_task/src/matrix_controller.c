@@ -1,6 +1,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/spi/spi.h>
+#include <linux/delay.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Al_Sah");
@@ -11,7 +12,7 @@ MODULE_VERSION("0.1");
 #define MODULE_TAG  "[led_matrix_controller]: " // For the printk
 
 static struct spi_device *lcd_spi_device = NULL;
-
+static uint8_t *spi_data_buffer = NULL;
 
 // Symbol definitions
 #define SYMBOL_HIGH     0x6     // 1 1 0
@@ -37,14 +38,44 @@ struct led_t {
     uint8_t blue;
 };
 
+static int create_buffer(uint8_t **buffer, size_t size);
+static void clean_buffer(uint8_t **buffer);
+
+#define TEST_COLOUR 'R'   // 'R' 'G' 'B'
+static int test_spi_write(char colour){
+    // Fill all matrix red
+    int i;
+
+    //iterate each pixel
+    for (i = 0; i < 64 * 3 * 3;) {
+        spi_data_buffer[i++] = colour == 'G' ? 0xDA : 0x92;
+        spi_data_buffer[i++] = colour == 'G' ? 0x4D : 0x49;
+        spi_data_buffer[i++] = colour == 'G' ? 0x24 : 0x24;
+
+        spi_data_buffer[i++] = colour == 'R' ? 0xDA : 0x92;
+        spi_data_buffer[i++] = colour == 'R' ? 0x4D : 0x49;
+        spi_data_buffer[i++] = colour == 'R' ? 0x24 : 0x24;
+
+        spi_data_buffer[i++] = colour == 'B' ? 0xDA : 0x92;
+        spi_data_buffer[i++] = colour == 'B' ? 0x4D : 0x49;
+        spi_data_buffer[i++] = colour == 'B' ? 0x24 : 0x24;
+    }
+
+    for(i = 64 * 3 * 3; i < LED_BITS_COUNT(64, 800000)/8+1; ++i){
+        spi_data_buffer[i] = 0;
+    }
+    return spi_write(lcd_spi_device, spi_data_buffer, LED_BITS_COUNT(64, 800000)/8+1);
+}
+
 
 static void inline on_exit(void){
     if (lcd_spi_device) {
         spi_unregister_device(lcd_spi_device);
     }
+    clean_buffer(&spi_data_buffer);
 }
 
-static int __init led_matrix_controller_init(void){
+static int init_spi_device(void){
     int ret;
     struct spi_master *master;
     struct spi_board_info led_matrix_info = {
@@ -55,26 +86,52 @@ static int __init led_matrix_controller_init(void){
             .mode = SPI_MODE_0,
     };
 
+    master = spi_busnum_to_master(led_matrix_info.bus_num);
+    if (!master) {
+        pr_err(MODULE_TAG "failed to find master; check if SPI enabled\n");
+        return -1;
+    }
+    lcd_spi_device = spi_new_device(master, &led_matrix_info);
+    if (!lcd_spi_device) {
+        pr_err(MODULE_TAG "failed to create slave\n");
+        return -1;
+    }
+    ret = spi_setup(lcd_spi_device);
+    if (ret) {
+        pr_err(MODULE_TAG "failed to setup slave\n");
+        return ret;
+    }
+    ret = create_buffer(&spi_data_buffer, LED_BITS_COUNT(64, LED_FREQUENCY)/8 + 1);
+    if (ret) {
+        pr_err(MODULE_TAG "failed to setup slave\n");
+    }
+    return ret;
+}
+
+static int __init led_matrix_controller_init(void){
+    int ret;
+
     do{
-        master = spi_busnum_to_master(led_matrix_info.bus_num);
-        if (!master) {
-            pr_err(MODULE_TAG "failed to find master; check if SPI enabled\n");
+        ret = init_spi_device();
+        if (ret != 0) {
             break;
         }
-        lcd_spi_device = spi_new_device(master, &led_matrix_info);
-        if (!lcd_spi_device) {
-            pr_err(MODULE_TAG "failed to create slave\n");
+        pr_notice(MODULE_TAG "spi device setup completed\n");
+        pr_notice(MODULE_TAG "loaded\n");
+
+
+        if(test_spi_write('R') != 0){
             break;
         }
-        ret = spi_setup(lcd_spi_device);
-        if (ret) {
-            pr_err(MODULE_TAG "failed to setup slave\n");
-            spi_unregister_device(lcd_spi_device);
+        ssleep(2);
+        if(test_spi_write('G') != 0){
+            break;
+        }
+        ssleep(2);
+        if(test_spi_write('B') != 0){
             break;
         }
 
-        pr_notice(MODULE_TAG "spi device setup completed\n");
-        pr_notice(MODULE_TAG "loaded\n");
         return 0;
     } while (42); // to avoid goto
 
@@ -90,3 +147,21 @@ static void led_matrix_controller_exit(void){
 
 module_init(led_matrix_controller_init)
 module_exit(led_matrix_controller_exit)
+
+
+
+static int create_buffer(uint8_t **buffer, size_t size){
+    *buffer = (uint8_t*) kmalloc(size, GFP_KERNEL);
+    if (*buffer == NULL){
+        pr_err(MODULE_TAG "failed to create buffer");
+        return -1;
+    }
+    return 0;
+}
+
+static void clean_buffer(uint8_t **buffer){
+    if (*buffer) {
+        kfree(*buffer);
+        *buffer = NULL;
+    }
+}
