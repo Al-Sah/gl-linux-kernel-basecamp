@@ -34,7 +34,7 @@ static uint8_t *spi_data_buffer = NULL;
 #define LED_DELAY_BYTES (LED_DELAY_BITS / 8 + 1) // +1 to cover fractional part after division
 
 // Number of bits to cover specified set of leds
-#define LED_DATA_BITS   (LEDS  * PIXEL_COLOURS * BITS_PER_PIXEL * BITS_PER_SYMBOL)
+#define LED_DATA_BITS   (LEDS * PIXEL_COLOURS * BITS_PER_PIXEL * BITS_PER_SYMBOL)
 #define LED_DATA_BYTES  (LEDS * PIXEL_COLOURS * BITS_PER_SYMBOL) // instead of x/8 remove BITS_PER_PIXEL
 
 // data bits + reset code
@@ -42,24 +42,79 @@ static uint8_t *spi_data_buffer = NULL;
 #define LED_BYTES_COUNT (LED_DATA_BYTES + LED_DELAY_BYTES)
 
 
-/*struct led_t {
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-};*/
+typedef struct uint24_t uint24_t;
+typedef struct pixel_t pixel_t;
 
-enum colours{
-    GREEN = 1,
-    RED = 2,
-    BLUE = 3,
-    NONE = 4,
+struct uint24_t {
+    unsigned int value : 24;
 };
 
-static int create_buffer(void **buffer, size_t size);
-static void clean_buffer(void **buffer);
+struct pixel_t {
+    union {
+        uint24_t grb;
+        uint8_t  colours[3];
+    };
+};
+struct pixel_t *pixels_buffer = NULL;
 
-// is used for test
-static void test_fill_spi_buffer(int colour){
+
+enum colours{
+    GREEN = 0,
+    RED = 1,
+    BLUE = 2,
+    NONE = 3,
+};
+
+
+static void convert_pixels_to_symbols(void);
+static void convert_byte(const uint8_t *in, uint24_t *out);
+
+static int  create_buffer(void **buffer, size_t size);
+static void clean_buffer(void **buffer);
+static void on_exit(void);
+
+
+static void convert_pixels_to_symbols(void){
+    int i, j = 0;
+    for(i = 0; i < LEDS; i++){
+        convert_byte(&pixels_buffer[i].colours[RED],   (uint24_t*)(&spi_data_buffer[j+3]));
+        convert_byte(&pixels_buffer[i].colours[GREEN], (uint24_t*)(&spi_data_buffer[j]));
+        convert_byte(&pixels_buffer[i].colours[BLUE],  (uint24_t*)(&spi_data_buffer[j+6]));
+        j += 9;
+    }
+    for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
+        spi_data_buffer[i] = 0;
+    }
+}
+
+static void convert_byte(const uint8_t *in, uint24_t *out){
+    size_t i;
+    uint32_t res = 0;
+    uint8_t mask = 1u << 7;
+    for(i = 0; i < 8; ++i){
+        if((*in & mask) == (uint8_t)0){
+            res = res | SYMBOL_LOW;
+        } else {
+            res = res | SYMBOL_HIGH;
+        }
+        res = res << 3;
+        mask = mask >> 1;
+    }
+    //out->value = res >> 3; //DEPENDS ON BYTES ORDERING
+    res = res >> 3;
+    out->value = (res & 0xFF00FF00) | ((res >> 16) & 0x0000FF) | ((res << 16) & 0xFF0000);
+}
+
+void fill_pixels_buffer(int colour){
+    int i;
+    for(i = 0; i < LEDS; ++i){
+        pixels_buffer[i].colours[RED]   = colour == RED ? 200 : 0;
+        pixels_buffer[i].colours[GREEN] = colour == GREEN ? 200 : 0;
+        pixels_buffer[i].colours[BLUE]  = colour == BLUE ? 200 : 0;
+    }
+}
+
+static void fill_symbols_buffer(int colour){
     int i;
     for (i = 0; i < LEDS * PIXEL_COLOURS * 3;) {
         // converted 24 bits to symbols
@@ -75,46 +130,79 @@ static void test_fill_spi_buffer(int colour){
         spi_data_buffer[i++] = (colour == BLUE) ? 0x4D : 0x49;
         spi_data_buffer[i++] = 0x24;
     }
-
     for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
         spi_data_buffer[i] = 0;
     }
 }
 
-static int test_spi_write(void){
+static int test_pixels_layout(void){
     size_t length = LED_BYTES_COUNT;
-    test_fill_spi_buffer(RED);
+
+    fill_symbols_buffer(RED);
     if(spi_write(lcd_spi_device, spi_data_buffer, length) != 0){
         pr_err(MODULE_TAG "spi_write failed\n");
         return -1;
     }
-    ssleep(1);
-    test_fill_spi_buffer(GREEN);
+    msleep(500);
+
+    fill_symbols_buffer(GREEN);
     if(spi_write(lcd_spi_device, spi_data_buffer, length) != 0){
         pr_err(MODULE_TAG "spi_write failed\n");
         return -1;
     }
-    ssleep(1);
-    test_fill_spi_buffer(BLUE);
+    msleep(500);
+
+    fill_symbols_buffer(BLUE);
     if(spi_write(lcd_spi_device, spi_data_buffer, length) != 0){
         pr_err(MODULE_TAG "spi_write failed\n");
         return -1;
     }
-    ssleep(1);
-    test_fill_spi_buffer(NONE);
+    msleep(500);
+
+    fill_symbols_buffer(NONE);
     if(spi_write(lcd_spi_device, spi_data_buffer, length) != 0){
         pr_err(MODULE_TAG "spi_write failed\n");
         return -1;
     }
+    msleep(500);
     return 0;
 }
 
+static int test_symbols_layout(void){
+    size_t length = LED_BYTES_COUNT;
 
-static void inline on_exit(void){
-    if (lcd_spi_device) {
-        spi_unregister_device(lcd_spi_device);
+    fill_pixels_buffer(RED);
+    convert_pixels_to_symbols();
+    if(spi_write(lcd_spi_device, spi_data_buffer, length) != 0){
+        pr_err(MODULE_TAG "spi_write failed\n");
+        return -1;
     }
-    clean_buffer((void *)&spi_data_buffer);
+    msleep(500);
+
+    fill_pixels_buffer(GREEN);
+    convert_pixels_to_symbols();
+    if(spi_write(lcd_spi_device, spi_data_buffer, length) != 0){
+        pr_err(MODULE_TAG "spi_write failed\n");
+        return -1;
+    }
+    msleep(500);
+
+    fill_pixels_buffer(BLUE);
+    convert_pixels_to_symbols();
+    if(spi_write(lcd_spi_device, spi_data_buffer, length) != 0){
+        pr_err(MODULE_TAG "spi_write failed\n");
+        return -1;
+    }
+    msleep(500);
+
+    fill_pixels_buffer(NONE);
+    convert_pixels_to_symbols();
+    if(spi_write(lcd_spi_device, spi_data_buffer, length) != 0){
+        pr_err(MODULE_TAG "spi_write failed\n");
+        return -1;
+    }
+    msleep(500);
+    return 0;
 }
 
 static int init_spi_device(void){
@@ -158,8 +246,16 @@ static int __init led_matrix_controller_init(void){
         if (ret != 0) {
             break;
         }
+        ret = create_buffer((void *)&pixels_buffer, sizeof(pixel_t)*LEDS);
+        if (ret != 0) {
+            break;
+        }
 
-        ret = test_spi_write();
+        ret = test_symbols_layout();
+        if (ret != 0) {
+            break;
+        }
+        ret = test_pixels_layout();
         if (ret != 0) {
             break;
         }
@@ -183,6 +279,13 @@ module_init(led_matrix_controller_init)
 module_exit(led_matrix_controller_exit)
 
 
+static void on_exit(void){
+    if (lcd_spi_device) {
+        spi_unregister_device(lcd_spi_device);
+    }
+    clean_buffer((void *)&spi_data_buffer);
+    clean_buffer((void *)&pixels_buffer);
+}
 
 static int create_buffer(void **buffer, size_t size){
     *buffer = kmalloc(size, GFP_KERNEL);
