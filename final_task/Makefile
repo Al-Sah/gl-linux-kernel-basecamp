@@ -3,7 +3,8 @@ ifeq ($(KERNEL_DIR),)
 	KERNEL_DIR = /lib/modules/$(shell uname -r)/build
 endif
 
-TARGET = matrix_controller
+TARGET1 = matrix_controller
+TARGET2 = mod_test
 TREE_FILE = spidev_off
 
 PROJECT_DIR=$(shell pwd)
@@ -18,12 +19,12 @@ all: build
 build: clean sub-make
 	@echo "  Building...  KERNEL_DIR = ${KERNEL_DIR}"
 	@$(MAKE) -C $(KERNEL_DIR) M=$(SRC_DIR) modules
-	@cp $(SRC_DIR)/$(TARGET).ko $(BIN_DIR)/$(TARGET).ko
+	@cp $(SRC_DIR)/*.ko $(BIN_DIR)/
 	@$(MAKE) -C $(KERNEL_DIR) M=$(SRC_DIR)  clean
 
 
 sub-make:
-	@echo "obj-m += $(TARGET).o" > $(SRC_DIR)/Makefile
+	@echo "obj-m += $(TARGET1).o $(TARGET2).o" > $(SRC_DIR)/Makefile
 
 
 clean:

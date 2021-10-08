@@ -1,14 +1,13 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/spi/spi.h>
-#include <linux/delay.h>
+#include "../matrix_controller.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Al_Sah");
 MODULE_DESCRIPTION("Final task");
 MODULE_VERSION("0.1");
 
-//#define MODULE_ID   "led_matrix_controller"
 #define MODULE_TAG  "[led_matrix_controller]: " // For the printk
 
 static struct spi_device *lcd_spi_device = NULL;
@@ -41,31 +40,7 @@ static uint8_t *spi_data_buffer = NULL;
 #define LED_BITS_COUNT  (LED_DATA_BITS + LED_DELAY_BITS)
 #define LED_BYTES_COUNT (LED_DATA_BYTES + LED_DELAY_BYTES)
 
-
-typedef struct uint24_t uint24_t;
-typedef struct pixel_t pixel_t;
-
-struct uint24_t {
-    unsigned int value : 24;
-};
-
-struct pixel_t {
-    union {
-        uint24_t grb;
-        uint8_t  colours[3];
-    };
-};
-struct pixel_t *pixels_buffer = NULL;
-
-
-enum colours{
-    GREEN = 0,
-    RED = 1,
-    BLUE = 2,
-    NONE = 3,
-};
-
-static size_t buffer_length = LED_BYTES_COUNT;
+static int init_spi_device(void);
 
 static void convert_pixels_to_symbols(void);
 static void convert_byte(const uint8_t *in, uint24_t *out);
@@ -74,139 +49,54 @@ static int  create_buffer(void **buffer, size_t size);
 static void clean_buffer(void **buffer);
 static void on_exit(void);
 
+int  send_data_to_matrix(void);
+void write_symbols(int colour);
+void write_pixels(uint8_t red, uint8_t green, uint8_t blue);
 
-static int send_data_to_matrix(void);
-// TODO test by external module
-static int test_symbols_layout(void);
-static int test_pixels_layout(void);
+EXPORT_SYMBOL(send_data_to_matrix);
+EXPORT_SYMBOL(write_symbols);
+EXPORT_SYMBOL(write_pixels);
 
+static size_t buffer_length = LED_BYTES_COUNT;
 
-static void convert_pixels_to_symbols(void){
-    int i, j = 0;
-    for(i = 0; i < LEDS; i++){
-        convert_byte(&pixels_buffer[i].colours[RED],   (uint24_t*)(&spi_data_buffer[j+3]));
-        convert_byte(&pixels_buffer[i].colours[GREEN], (uint24_t*)(&spi_data_buffer[j]));
-        convert_byte(&pixels_buffer[i].colours[BLUE],  (uint24_t*)(&spi_data_buffer[j+6]));
-        j += 9;
-    }
-    for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
-        spi_data_buffer[i] = 0;
-    }
-}
+static int __init led_matrix_controller_init(void){
+    int ret;
 
-static void convert_byte(const uint8_t *in, uint24_t *out){
-    size_t i;
-    uint32_t res = 0;
-    uint8_t mask = 1u << 7;
-    for(i = 0; i < 8; ++i){
-        if((*in & mask) == (uint8_t)0){
-            res = res | SYMBOL_LOW;
-        } else {
-            res = res | SYMBOL_HIGH;
+    do{
+        ret = init_spi_device();
+        if (ret != 0) {
+            break;
         }
-        res = res << 3;
-        mask = mask >> 1;
-    }
-    //out->value = res >> 3; //DEPENDS ON BYTES ORDERING
-    res = res >> 3;
-    out->value = (res & 0xFF00FF00) | ((res >> 16) & 0x0000FF) | ((res << 16) & 0xFF0000);
+        ret = create_buffer((void *)&pixels_buffer, sizeof(pixel_t)*LEDS);
+        if (ret != 0) {
+            break;
+        }
+        pr_notice(MODULE_TAG "spi device setup completed\n");
+        pr_notice(MODULE_TAG "loaded\n");
+        return 0;
+    } while (42); // to avoid goto
+
+    on_exit();
+    pr_err(MODULE_TAG "failed to load\n");
+    return -EPERM;
 }
 
-void fill_pixels_buffer(uint8_t red, uint8_t green, uint8_t blue){
-    int i;
-    for(i = 0; i < LEDS; ++i){
-        pixels_buffer[i].colours[RED]   = red;
-        pixels_buffer[i].colours[GREEN] = green;
-        pixels_buffer[i].colours[BLUE]  = blue;
-    }
+static void led_matrix_controller_exit(void){
+    on_exit();
+    pr_notice(MODULE_TAG "uploaded\n");
 }
 
-static void fill_symbols_buffer(int colour){
-    int i;
-    for (i = 0; i < LEDS * PIXEL_COLOURS * 3;) {
-        // converted 24 bits to symbols
-        spi_data_buffer[i++] = (colour == GREEN) ? 0xDA : 0x92;
-        spi_data_buffer[i++] = (colour == GREEN) ? 0x4D : 0x49;
-        spi_data_buffer[i++] = 0x24;
+module_init(led_matrix_controller_init)
+module_exit(led_matrix_controller_exit)
 
-        spi_data_buffer[i++] = (colour == RED) ? 0xDA : 0x92;
-        spi_data_buffer[i++] = (colour == RED) ? 0x4D : 0x49;
-        spi_data_buffer[i++] = 0x24;
 
-        spi_data_buffer[i++] = (colour == BLUE) ? 0xDA : 0x92;
-        spi_data_buffer[i++] = (colour == BLUE) ? 0x4D : 0x49;
-        spi_data_buffer[i++] = 0x24;
+
+static void on_exit(void){
+    if (lcd_spi_device) {
+        spi_unregister_device(lcd_spi_device);
     }
-    for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
-        spi_data_buffer[i] = 0;
-    }
-}
-
-static int  send_data_to_matrix(void){
-    if(spi_write(lcd_spi_device, spi_data_buffer, buffer_length) != 0){
-        pr_err(MODULE_TAG "spi_write failed\n");
-        return -1;
-    }
-    return 0;
-}
-
-static int test_symbols_layout(void){
-    fill_symbols_buffer(RED);
-    if(send_data_to_matrix() != 0){
-        return -1;
-    }
-    msleep(500);
-
-    fill_symbols_buffer(GREEN);
-    if(send_data_to_matrix() != 0){
-        return -1;
-    }
-    msleep(500);
-
-    fill_symbols_buffer(BLUE);
-    if(send_data_to_matrix() != 0){
-        return -1;
-    }
-    msleep(500);
-
-    fill_symbols_buffer(NONE);
-    if(send_data_to_matrix() != 0){
-        return -1;
-    }
-    msleep(500);
-    return 0;
-}
-
-static int test_pixels_layout(void){
-
-    fill_pixels_buffer(72,209,204);
-    convert_pixels_to_symbols();
-    if(send_data_to_matrix() != 0){
-        return -1;
-    }
-    msleep(500);
-
-    fill_pixels_buffer(52, 176, 30);
-    convert_pixels_to_symbols();
-    if(send_data_to_matrix() != 0){
-        return -1;
-    }
-    msleep(500);
-
-    fill_pixels_buffer(20, 40, 200);
-    convert_pixels_to_symbols();
-    if(send_data_to_matrix() != 0){
-        return -1;
-    }
-    msleep(500);
-
-    fill_pixels_buffer(0 ,0 ,0);
-    convert_pixels_to_symbols();
-    if(send_data_to_matrix() != 0){
-        return -1;
-    }
-    msleep(500);
-    return 0;
+    clean_buffer((void *)&spi_data_buffer);
+    clean_buffer((void *)&pixels_buffer);
 }
 
 static int init_spi_device(void){
@@ -242,54 +132,76 @@ static int init_spi_device(void){
     return ret;
 }
 
-static int __init led_matrix_controller_init(void){
-    int ret;
-
-    do{
-        ret = init_spi_device();
-        if (ret != 0) {
-            break;
-        }
-        ret = create_buffer((void *)&pixels_buffer, sizeof(pixel_t)*LEDS);
-        if (ret != 0) {
-            break;
-        }
-
-        ret = test_symbols_layout();
-        if (ret != 0) {
-            break;
-        }
-        ret = test_pixels_layout();
-        if (ret != 0) {
-            break;
-        }
-
-        pr_notice(MODULE_TAG "spi device setup completed\n");
-        pr_notice(MODULE_TAG "loaded\n");
-        return 0;
-    } while (42); // to avoid goto
-
-    on_exit();
-    pr_err(MODULE_TAG "failed to load\n");
-    return -EPERM;
-}
-
-static void led_matrix_controller_exit(void){
-    on_exit();
-    pr_notice(MODULE_TAG "uploaded\n");
-}
-
-module_init(led_matrix_controller_init)
-module_exit(led_matrix_controller_exit)
-
-
-static void on_exit(void){
-    if (lcd_spi_device) {
-        spi_unregister_device(lcd_spi_device);
+static void convert_pixels_to_symbols(void){
+    int i, j = 0;
+    for(i = 0; i < LEDS; i++){
+        convert_byte(&pixels_buffer[i].colours[RED],   (uint24_t*)(&spi_data_buffer[j+3]));
+        convert_byte(&pixels_buffer[i].colours[GREEN], (uint24_t*)(&spi_data_buffer[j]));
+        convert_byte(&pixels_buffer[i].colours[BLUE],  (uint24_t*)(&spi_data_buffer[j+6]));
+        j += 9;
     }
-    clean_buffer((void *)&spi_data_buffer);
-    clean_buffer((void *)&pixels_buffer);
+    for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
+        spi_data_buffer[i] = 0;
+    }
 }
+
+static void convert_byte(const uint8_t *in, uint24_t *out){
+    size_t i;
+    uint32_t res = 0;
+    uint8_t mask = 1u << 7;
+    for(i = 0; i < 8; ++i){
+        if((*in & mask) == (uint8_t)0){
+            res = res | SYMBOL_LOW;
+        } else {
+            res = res | SYMBOL_HIGH;
+        }
+        res = res << 3;
+        mask = mask >> 1;
+    }
+    //out->value = res >> 3; //DEPENDS ON BYTES ORDERING
+    res = res >> 3;
+    out->value = (res & 0xFF00FF00) | ((res >> 16) & 0x0000FF) | ((res << 16) & 0xFF0000);
+}
+
+void write_pixels(uint8_t red, uint8_t green, uint8_t blue){
+    int i;
+    for(i = 0; i < LEDS; ++i){
+        pixels_buffer[i].colours[RED]   = red;
+        pixels_buffer[i].colours[GREEN] = green;
+        pixels_buffer[i].colours[BLUE]  = blue;
+    }
+    convert_pixels_to_symbols();
+}
+
+void write_symbols(int colour){
+    int i;
+    for (i = 0; i < LEDS * PIXEL_COLOURS * 3;) {
+        // converted 24 bits to symbols
+        spi_data_buffer[i++] = (colour == GREEN) ? 0xDA : 0x92;
+        spi_data_buffer[i++] = (colour == GREEN) ? 0x4D : 0x49;
+        spi_data_buffer[i++] = 0x24;
+
+        spi_data_buffer[i++] = (colour == RED) ? 0xDA : 0x92;
+        spi_data_buffer[i++] = (colour == RED) ? 0x4D : 0x49;
+        spi_data_buffer[i++] = 0x24;
+
+        spi_data_buffer[i++] = (colour == BLUE) ? 0xDA : 0x92;
+        spi_data_buffer[i++] = (colour == BLUE) ? 0x4D : 0x49;
+        spi_data_buffer[i++] = 0x24;
+    }
+    for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
+        spi_data_buffer[i] = 0;
+    }
+}
+
+int send_data_to_matrix(void){
+    if(spi_write(lcd_spi_device, spi_data_buffer, buffer_length) != 0){
+        pr_err(MODULE_TAG "spi_write failed\n");
+        return -1;
+    }
+    return 0;
+}
+
 
 static int create_buffer(void **buffer, size_t size){
     *buffer = kmalloc(size, GFP_KERNEL);
