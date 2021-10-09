@@ -1,6 +1,8 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/spi/spi.h>
+#include <linux/version.h>
+#include <linux/proc_fs.h>
 #include <linux/cdev.h>
 #include "../matrix_controller.h"
 
@@ -9,8 +11,9 @@ MODULE_AUTHOR("Al_Sah");
 MODULE_DESCRIPTION("Final task");
 MODULE_VERSION("0.1");
 
-#define MODULE_NAME "led_matrix_controller"
-#define MODULE_TAG  "[led_matrix_controller]: " // For the printk
+#define PROC_DIRECTORY  "led_matrix_controller"
+#define MODULE_NAME     "led_matrix_controller"
+#define MODULE_TAG      "[led_matrix_controller]: " // For the printk
 
 static struct spi_device *lcd_spi_device = NULL;
 static uint8_t *symbols_buffer = NULL;
@@ -21,7 +24,6 @@ static uint8_t *symbols_buffer = NULL;
 #define BITS_PER_SYMBOL 3       // in SYMBOL_HIGH and SYMBOL_LOW
 
 #define PIXEL_COLOURS   3       // R G B
-#define BITS_PER_PIXEL  8       // sizeof(uint8_t) in bits - describes one color
 #define LED_RESET_US    55      // reset time in us (have to be >= 50)
 
 
@@ -34,12 +36,9 @@ static uint8_t *symbols_buffer = NULL;
 #define LED_DELAY_BITS  (LED_RESET_US * DEVICE_FREQUENCY / 1000000)
 #define LED_DELAY_BYTES (LED_DELAY_BITS / 8 + 1) // +1 to cover fractional part after division
 
-// Number of bits to cover specified set of leds
-#define LED_DATA_BITS   (LEDS * PIXEL_COLOURS * BITS_PER_PIXEL * BITS_PER_SYMBOL)
+// Number of bytes to cover specified set of leds
 #define LED_DATA_BYTES  (LEDS * PIXEL_COLOURS * BITS_PER_SYMBOL) // instead of x/8 remove BITS_PER_PIXEL
-
 // data bits + reset code
-#define LED_BITS_COUNT  (LED_DATA_BITS + LED_DELAY_BITS)
 #define LED_BYTES_COUNT (LED_DATA_BYTES + LED_DELAY_BYTES)
 
 static int init_spi_device(void);
@@ -65,11 +64,29 @@ static struct class *dev_class;
 
 static size_t buffer_length = LED_BYTES_COUNT;
 
+static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset);
 
-static ssize_t dev_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset);
+static ssize_t dev_write(__attribute__((unused)) struct file *file_p, const char __user *buffer, size_t length,
+                         __attribute__((unused)) loff_t *offset);
 static const struct file_operations dev_fops = {
         .write = dev_write,
 };
+
+
+static int  create_proc_entries(void);
+static void delete_proc_entries(void);
+
+
+static struct proc_dir_entry *proc_dir, *proc_info_file;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
+static const struct proc_ops proc_fops = {
+    .proc_read  = proc_read,
+};
+#else
+static struct file_operations proc_fops = {
+        .read  = proc_read,
+};
+#endif
 
 static struct frame_buffer_t *frame;
 static struct pixel_t* pixels_buffer = NULL;
@@ -119,6 +136,9 @@ static int init_frame_buffer(void){
 static int __init led_matrix_controller_init(void){
 
     do{
+        if(create_proc_entries() != 0){
+            break;
+        }
         if(init_character_device() != 0){
             break;
         }
@@ -149,6 +169,7 @@ module_exit(led_matrix_controller_exit)
 
 
 static void on_exit(void){
+    delete_proc_entries();
     if (lcd_spi_device) {
         spi_unregister_device(lcd_spi_device);
     }
@@ -207,27 +228,80 @@ static void update_frame_buffer(void* src, size_t pixels) {
     }
     left = copy_from_user(frame->pixels, src, pixels*sizeof(pixel_t));
     if (left){
-        printk(KERN_ERR "dev_update_frame: failed to write %lu from %lu chars\n", (ulong)left, (ulong)frame->len*3);
+        pr_err(MODULE_TAG "dev_update_frame: failed to write %lu from %lu chars\n",
+               (ulong)left, (ulong)frame->len*sizeof(pixel_t));
     }
     convert_pixels_to_symbols();
     send_data_to_matrix();
 }
 
-static ssize_t dev_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset) {
+static ssize_t dev_write(
+        __attribute__((unused)) struct file *file_p,
+        const char __user *buffer, size_t length,
+        __attribute__((unused)) loff_t *offset) {
+
     size_t left;
-
     frame_buffer_t temp;
-
     if (length != sizeof(frame_buffer_t)) {
-        printk(KERN_WARNING " dev_write: incorrect input; in length: %lu\n", (ulong)length);
+        pr_warn(MODULE_TAG "dev_write: incorrect input; in length: %lu\n", (ulong)length);
+        return (ssize_t)length;
     }
     left = copy_from_user(&temp, buffer, length);
     if (left){
-        printk(KERN_ERR "dev_write: failed to write %lu from %lu chars\n", (ulong)left, (ulong)length);
+        pr_warn(MODULE_TAG "dev_write: failed to write %lu from %lu chars\n", (ulong)left, (ulong)length);
         return (ssize_t)length;
     }
     update_frame_buffer(temp.pixels, temp.len);
     return (ssize_t)length;
+}
+
+static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __user *buffer, size_t length, loff_t *offset){
+
+    char proc_buffer[256];
+    if( *offset != 0 ) {
+        return 0;
+    }
+    snprintf(proc_buffer, 256,
+    "\npixels     : %d\n"
+    "colours    : %d\n"
+    "sequence   : %s\n\n"
+    "minimal reset code duration    : %d\n"
+    "one symbol transfer time       : %s\n"
+    "bits per symbol                : %d\n"
+    "device frequency               : %d\n\n",
+    LEDS, 3, "GRB", LED_RESET_US, "1.25", BITS_PER_SYMBOL, DEVICE_FREQUENCY);
+
+    length = strlen(proc_buffer);
+
+    if( copy_to_user( buffer, proc_buffer, length )) {
+        pr_warn(MODULE_TAG "failed to copy some chars");
+        return -EINVAL;
+    }
+    *offset = (loff_t)length;
+    return (ssize_t)length;
+}
+
+static int create_proc_entries(void){
+    proc_dir = proc_mkdir(PROC_DIRECTORY, NULL);
+    if (proc_dir == NULL){
+        return -EFAULT;
+    }
+    proc_info_file = proc_create("info", 0, proc_dir, &proc_fops);
+    if (proc_info_file == NULL ) {
+        return -EFAULT;
+    }
+    return 0;
+}
+
+static void delete_proc_entries(void){
+    if (proc_info_file){
+        remove_proc_entry("info", proc_dir);
+        proc_info_file = NULL;
+    }
+    if (proc_dir){
+        remove_proc_entry(PROC_DIRECTORY, NULL);
+        proc_dir = NULL;
+    }
 }
 
 static void convert_pixels_to_symbols(void){
