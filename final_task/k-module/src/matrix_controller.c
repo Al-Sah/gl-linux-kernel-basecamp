@@ -1,6 +1,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/spi/spi.h>
+#include <linux/cdev.h>
 #include "../matrix_controller.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -8,10 +9,11 @@ MODULE_AUTHOR("Al_Sah");
 MODULE_DESCRIPTION("Final task");
 MODULE_VERSION("0.1");
 
+#define MODULE_NAME "led_matrix_controller"
 #define MODULE_TAG  "[led_matrix_controller]: " // For the printk
 
 static struct spi_device *lcd_spi_device = NULL;
-static uint8_t *spi_data_buffer = NULL;
+static uint8_t *symbols_buffer = NULL;
 
 // Symbol definitions
 #define SYMBOL_HIGH     0x6     // 1 1 0
@@ -57,22 +59,77 @@ EXPORT_SYMBOL(send_data_to_matrix);
 EXPORT_SYMBOL(write_symbols);
 EXPORT_SYMBOL(write_pixels);
 
+static int major = 0;
+static struct cdev led_cdev;
+static struct class *dev_class;
+
 static size_t buffer_length = LED_BYTES_COUNT;
 
+
+static ssize_t dev_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset);
+static const struct file_operations dev_fops = {
+        .write = dev_write,
+};
+
+static struct frame_buffer_t *frame;
+static struct pixel_t* pixels_buffer = NULL;
+
+
+static int init_character_device(void){
+    dev_t dev;
+    pr_notice(MODULE_TAG "start cdev initialisation\n");
+
+    if((alloc_chrdev_region(&dev, 0, 1, MODULE_NAME)) < 0){
+        pr_err("Cannot allocate major number\n");
+        return -1;
+    } else{
+        pr_notice(MODULE_TAG " cdev: major = %d; minor = %d \n",MAJOR(dev), MINOR(dev));
+        major = MAJOR(dev);
+    }
+    cdev_init(&led_cdev, &dev_fops );
+    led_cdev.owner = THIS_MODULE;
+
+    if((cdev_add(&led_cdev, dev, 1)) < 0){
+        pr_err(MODULE_TAG "failed to add the device to the system\n");
+        return -1;
+    }
+    if((dev_class = class_create(THIS_MODULE,MODULE_NAME)) == NULL){
+        pr_err(MODULE_TAG "failed to create sys class\n");
+        return -1;
+    }
+    if((device_create(dev_class,NULL,dev,NULL,"matrix_pixels")) == NULL){
+        pr_err(MODULE_TAG "failed to create device 1\n");
+        return -1;
+    }
+
+    pr_notice(MODULE_TAG "cdev initialisation: done\n");
+    return 0;
+}
+
+static int init_frame_buffer(void){
+    frame = (frame_buffer_t*)kmalloc(sizeof(frame_buffer_t), GFP_KERNEL);
+    if(create_buffer((void *)&pixels_buffer, sizeof(pixel_t)*LEDS) != 0){
+        pr_err(MODULE_TAG "pixels_buffer: failed to allocate memory\n");
+        return -1;
+    }
+    frame->pixels = pixels_buffer;
+    return 0;
+}
+
 static int __init led_matrix_controller_init(void){
-    int ret;
 
     do{
-        ret = init_spi_device();
-        if (ret != 0) {
+        if(init_character_device() != 0){
             break;
         }
-        ret = create_buffer((void *)&pixels_buffer, sizeof(pixel_t)*LEDS);
-        if (ret != 0) {
+        if(init_spi_device() != 0){
             break;
         }
         pr_notice(MODULE_TAG "spi device setup completed\n");
-        pr_notice(MODULE_TAG "loaded\n");
+        if(init_frame_buffer() != 0){
+            break;
+        }
+        pr_notice(MODULE_TAG " * module loaded *\n");
         return 0;
     } while (42); // to avoid goto
 
@@ -83,7 +140,7 @@ static int __init led_matrix_controller_init(void){
 
 static void led_matrix_controller_exit(void){
     on_exit();
-    pr_notice(MODULE_TAG "uploaded\n");
+    pr_notice(MODULE_TAG " * module uploaded * \n");
 }
 
 module_init(led_matrix_controller_init)
@@ -95,8 +152,18 @@ static void on_exit(void){
     if (lcd_spi_device) {
         spi_unregister_device(lcd_spi_device);
     }
-    clean_buffer((void *)&spi_data_buffer);
+    unregister_chrdev_region(MKDEV(major, 0 ), 1 );
+    device_destroy(dev_class, MKDEV(major, 0));
+
+    class_destroy( dev_class );
+    cdev_del( &led_cdev );
+
+    clean_buffer((void *)&symbols_buffer);
     clean_buffer((void *)&pixels_buffer);
+    if(frame){
+        kfree(frame);
+    }
+    frame = NULL;
 }
 
 static int init_spi_device(void){
@@ -125,23 +192,54 @@ static int init_spi_device(void){
         pr_err(MODULE_TAG "failed to setup slave\n");
         return ret;
     }
-    ret = create_buffer((void *)&spi_data_buffer, LED_BYTES_COUNT);
+    ret = create_buffer((void *)&symbols_buffer, LED_BYTES_COUNT);
     if (ret) {
         pr_err(MODULE_TAG "failed to create buffer\n");
     }
     return ret;
 }
 
+
+static void update_frame_buffer(void* src, size_t pixels) {
+    size_t left;
+    if(pixels > LEDS){
+        pixels = LEDS; // TODO config if pixels < 64 ...
+    }
+    left = copy_from_user(frame->pixels, src, pixels*sizeof(pixel_t));
+    if (left){
+        printk(KERN_ERR "dev_update_frame: failed to write %lu from %lu chars\n", (ulong)left, (ulong)frame->len*3);
+    }
+    convert_pixels_to_symbols();
+    send_data_to_matrix();
+}
+
+static ssize_t dev_write(struct file *file_p, const char __user *buffer, size_t length, loff_t *offset) {
+    size_t left;
+
+    frame_buffer_t temp;
+
+    if (length != sizeof(frame_buffer_t)) {
+        printk(KERN_WARNING " dev_write: incorrect input; in length: %lu\n", (ulong)length);
+    }
+    left = copy_from_user(&temp, buffer, length);
+    if (left){
+        printk(KERN_ERR "dev_write: failed to write %lu from %lu chars\n", (ulong)left, (ulong)length);
+        return (ssize_t)length;
+    }
+    update_frame_buffer(temp.pixels, temp.len);
+    return (ssize_t)length;
+}
+
 static void convert_pixels_to_symbols(void){
     int i, j = 0;
     for(i = 0; i < LEDS; i++){
-        convert_byte(&pixels_buffer[i].colours[RED],   (uint24_t*)(&spi_data_buffer[j+3]));
-        convert_byte(&pixels_buffer[i].colours[GREEN], (uint24_t*)(&spi_data_buffer[j]));
-        convert_byte(&pixels_buffer[i].colours[BLUE],  (uint24_t*)(&spi_data_buffer[j+6]));
+        convert_byte(&pixels_buffer[i].colours[RED],   (uint24_t*)(&symbols_buffer[j + 3]));
+        convert_byte(&pixels_buffer[i].colours[GREEN], (uint24_t*)(&symbols_buffer[j]));
+        convert_byte(&pixels_buffer[i].colours[BLUE],  (uint24_t*)(&symbols_buffer[j + 6]));
         j += 9;
     }
     for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
-        spi_data_buffer[i] = 0;
+        symbols_buffer[i] = 0;
     }
 }
 
@@ -177,25 +275,25 @@ void write_symbols(int colour){
     int i;
     for (i = 0; i < LEDS * PIXEL_COLOURS * 3;) {
         // converted 24 bits to symbols
-        spi_data_buffer[i++] = (colour == GREEN) ? 0xDA : 0x92;
-        spi_data_buffer[i++] = (colour == GREEN) ? 0x4D : 0x49;
-        spi_data_buffer[i++] = 0x24;
+        symbols_buffer[i++] = (colour == GREEN) ? 0xDA : 0x92;
+        symbols_buffer[i++] = (colour == GREEN) ? 0x4D : 0x49;
+        symbols_buffer[i++] = 0x24;
 
-        spi_data_buffer[i++] = (colour == RED) ? 0xDA : 0x92;
-        spi_data_buffer[i++] = (colour == RED) ? 0x4D : 0x49;
-        spi_data_buffer[i++] = 0x24;
+        symbols_buffer[i++] = (colour == RED) ? 0xDA : 0x92;
+        symbols_buffer[i++] = (colour == RED) ? 0x4D : 0x49;
+        symbols_buffer[i++] = 0x24;
 
-        spi_data_buffer[i++] = (colour == BLUE) ? 0xDA : 0x92;
-        spi_data_buffer[i++] = (colour == BLUE) ? 0x4D : 0x49;
-        spi_data_buffer[i++] = 0x24;
+        symbols_buffer[i++] = (colour == BLUE) ? 0xDA : 0x92;
+        symbols_buffer[i++] = (colour == BLUE) ? 0x4D : 0x49;
+        symbols_buffer[i++] = 0x24;
     }
     for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
-        spi_data_buffer[i] = 0;
+        symbols_buffer[i] = 0;
     }
 }
 
 int send_data_to_matrix(void){
-    if(spi_write(lcd_spi_device, spi_data_buffer, buffer_length) != 0){
+    if(spi_write(lcd_spi_device, symbols_buffer, buffer_length) != 0){
         pr_err(MODULE_TAG "spi_write failed\n");
         return -1;
     }

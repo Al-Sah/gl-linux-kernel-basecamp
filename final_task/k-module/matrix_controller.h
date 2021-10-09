@@ -5,6 +5,7 @@
 #ifndef MATRIX_CONTROLLER_H
 #define MATRIX_CONTROLLER_H
 
+typedef struct frame_buffer_t frame_buffer_t;
 typedef struct uint24_t uint24_t;
 typedef struct pixel_t pixel_t;
 
@@ -18,7 +19,11 @@ struct pixel_t {
         uint8_t  colours[3];
     };
 };
-struct pixel_t *pixels_buffer = NULL;
+
+struct frame_buffer_t{
+    uint32_t len;
+    pixel_t *pixels;
+};
 
 
 enum colours{
