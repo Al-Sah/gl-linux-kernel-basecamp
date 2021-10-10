@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint-gcc.h>
 #include <malloc.h>
+#include <unistd.h>
 
 #include "k-module/matrix_controller.h"
 const char* filename = "/dev/matrix_pixels";
@@ -8,7 +9,10 @@ const char* filename = "/dev/matrix_pixels";
 
 int main() {
 
-    FILE *fp = fopen(filename,"wb");
+    FILE *fp = NULL;
+    if( access( filename, F_OK ) == 0 ) {
+        fp = fopen(filename,"wb");
+    }
     if(!fp){
         printf("Failed to open %s file", filename);
         return 1;

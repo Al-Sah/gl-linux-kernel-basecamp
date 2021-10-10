@@ -4,6 +4,7 @@
 #include <linux/version.h>
 #include <linux/proc_fs.h>
 #include <linux/cdev.h>
+#include <linux/device.h>
 #include "../matrix_controller.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -27,7 +28,7 @@ static uint8_t *symbols_buffer = NULL;
 #define LED_RESET_US    55      // reset time in us (have to be >= 50)
 
 
-#define LEDS            64
+#define PIXELS            64
 // 1,25us - time to transfer one symbol (which consists of BITS_PER_SYMBOL)
 #define SYMBOL_FREQUENCY 800000  // 1,25us in 1 second  (1_000_000_000 / 1250)
 #define DEVICE_FREQUENCY (SYMBOL_FREQUENCY * BITS_PER_SYMBOL)
@@ -37,7 +38,7 @@ static uint8_t *symbols_buffer = NULL;
 #define LED_DELAY_BYTES (LED_DELAY_BITS / 8 + 1) // +1 to cover fractional part after division
 
 // Number of bytes to cover specified set of leds
-#define LED_DATA_BYTES  (LEDS * PIXEL_COLOURS * BITS_PER_SYMBOL) // instead of x/8 remove BITS_PER_PIXEL
+#define LED_DATA_BYTES  (PIXELS * PIXEL_COLOURS * BITS_PER_SYMBOL) // instead of x/8 remove BITS_PER_PIXEL
 // data bits + reset code
 #define LED_BYTES_COUNT (LED_DATA_BYTES + LED_DELAY_BYTES)
 
@@ -59,8 +60,19 @@ EXPORT_SYMBOL(write_symbols);
 EXPORT_SYMBOL(write_pixels);
 
 static int major = 0;
+static int brightness = 100;
+
+static uint8_t *brightness_correction_table;
+static struct class *led_matrix_controller;
+
 static struct cdev led_cdev;
-static struct class *dev_class;
+
+static ssize_t brightness_show(__attribute__((unused)) struct class *class,
+        __attribute__((unused)) struct class_attribute *attr, char *buf );
+static ssize_t brightness_store(__attribute__((unused)) struct class *class,
+        __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count );
+
+CLASS_ATTR_RW(brightness);
 
 static size_t buffer_length = LED_BYTES_COUNT;
 
@@ -110,11 +122,7 @@ static int init_character_device(void){
         pr_err(MODULE_TAG "failed to add the device to the system\n");
         return -1;
     }
-    if((dev_class = class_create(THIS_MODULE,MODULE_NAME)) == NULL){
-        pr_err(MODULE_TAG "failed to create sys class\n");
-        return -1;
-    }
-    if((device_create(dev_class,NULL,dev,NULL,"matrix_pixels")) == NULL){
+    if((device_create(led_matrix_controller,NULL,dev,NULL,"matrix_pixels")) == NULL){
         pr_err(MODULE_TAG "failed to create device 1\n");
         return -1;
     }
@@ -125,7 +133,7 @@ static int init_character_device(void){
 
 static int init_frame_buffer(void){
     frame = (frame_buffer_t*)kmalloc(sizeof(frame_buffer_t), GFP_KERNEL);
-    if(create_buffer((void *)&pixels_buffer, sizeof(pixel_t)*LEDS) != 0){
+    if(create_buffer((void *)&pixels_buffer, sizeof(pixel_t) * PIXELS) != 0){
         pr_err(MODULE_TAG "pixels_buffer: failed to allocate memory\n");
         return -1;
     }
@@ -133,10 +141,38 @@ static int init_frame_buffer(void){
     return 0;
 }
 
+void update_brightness_table(void){
+    int i;
+    for(i = 0; i < 255; ++i){
+        brightness_correction_table[i] = i * brightness / 100;
+    }
+}
+
+int init_sys_interface(void){
+    if((led_matrix_controller = class_create(THIS_MODULE,MODULE_NAME)) == NULL){
+        pr_err(MODULE_TAG "failed to create sys class\n");
+        return -1;
+    }
+    if (class_create_file(led_matrix_controller, &class_attr_brightness) != 0) {
+        pr_err(MODULE_TAG "failed to create sys_fs 'brightness' file");
+        return -1;
+    }
+    if(create_buffer((void *)&brightness_correction_table, 256) != 0){
+        pr_err(MODULE_TAG "brightness_table: failed to allocate memory\n");
+        return -1;
+    }
+    update_brightness_table();
+
+    return 0;
+}
+
 static int __init led_matrix_controller_init(void){
 
     do{
         if(create_proc_entries() != 0){
+            break;
+        }
+        if(init_sys_interface() != 0){
             break;
         }
         if(init_character_device() != 0){
@@ -174,13 +210,14 @@ static void on_exit(void){
         spi_unregister_device(lcd_spi_device);
     }
     unregister_chrdev_region(MKDEV(major, 0 ), 1 );
-    device_destroy(dev_class, MKDEV(major, 0));
-
-    class_destroy( dev_class );
+    device_destroy(led_matrix_controller, MKDEV(major, 0));
+    class_remove_file( led_matrix_controller, &class_attr_brightness);
+    class_destroy( led_matrix_controller );
     cdev_del( &led_cdev );
 
     clean_buffer((void *)&symbols_buffer);
     clean_buffer((void *)&pixels_buffer);
+    clean_buffer((void *)&brightness_correction_table);
     if(frame){
         kfree(frame);
     }
@@ -221,16 +258,27 @@ static int init_spi_device(void){
 }
 
 
+static void validate_brightness(void) {
+    int i;
+    // Create extra buffer ?
+    for (i = 0; i < PIXELS; ++i) { // X * 100 / old_brightness
+        frame->pixels[i].colours[RED]   = brightness_correction_table[frame->pixels[i].colours[RED]];
+        frame->pixels[i].colours[GREEN] = brightness_correction_table[frame->pixels[i].colours[GREEN]];
+        frame->pixels[i].colours[BLUE]  = brightness_correction_table[frame->pixels[i].colours[BLUE]];
+    }
+}
+
 static void update_frame_buffer(void* src, size_t pixels) {
     size_t left;
-    if(pixels > LEDS){
-        pixels = LEDS; // TODO config if pixels < 64 ...
+    if(pixels > PIXELS){
+        pixels = PIXELS; // TODO config if pixels < 64 ...
     }
     left = copy_from_user(frame->pixels, src, pixels*sizeof(pixel_t));
     if (left){
         pr_err(MODULE_TAG "dev_update_frame: failed to write %lu from %lu chars\n",
                (ulong)left, (ulong)frame->len*sizeof(pixel_t));
     }
+    validate_brightness();
     convert_pixels_to_symbols();
     send_data_to_matrix();
 }
@@ -269,7 +317,7 @@ static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __use
     "one symbol transfer time       : %s\n"
     "bits per symbol                : %d\n"
     "device frequency               : %d\n\n",
-    LEDS, 3, "GRB", LED_RESET_US, "1.25", BITS_PER_SYMBOL, DEVICE_FREQUENCY);
+             PIXELS, 3, "GRB", LED_RESET_US, "1.25", BITS_PER_SYMBOL, DEVICE_FREQUENCY);
 
     length = strlen(proc_buffer);
 
@@ -279,6 +327,27 @@ static ssize_t proc_read(__attribute__((unused)) struct file *file_p, char __use
     }
     *offset = (loff_t)length;
     return (ssize_t)length;
+}
+
+static ssize_t brightness_show(__attribute__((unused)) struct class *class,
+        __attribute__((unused)) struct class_attribute *attr, char *buf ){
+    snprintf(buf, 10, "%d", brightness);
+    return (ssize_t)strlen( buf );
+}
+
+static ssize_t brightness_store(__attribute__((unused)) struct class *class,
+                                __attribute__((unused)) struct class_attribute *attr, const char *buf, size_t count ){
+    long res;
+    if((kstrtol(buf, 10, &res) == 0) && (res >= 0 && res <= 100)){
+        brightness = (int)res;
+/*        update_brightness_table();
+        validate_brightness();
+        convert_pixels_to_symbols();
+        send_data_to_matrix();*/
+    }else{
+        pr_warn(MODULE_TAG "failed to update brightness\n");
+    }
+    return (ssize_t)count;
 }
 
 static int create_proc_entries(void){
@@ -306,13 +375,13 @@ static void delete_proc_entries(void){
 
 static void convert_pixels_to_symbols(void){
     int i, j = 0;
-    for(i = 0; i < LEDS; i++){
+    for(i = 0; i < PIXELS; i++){
         convert_byte(&pixels_buffer[i].colours[RED],   (uint24_t*)(&symbols_buffer[j + 3]));
         convert_byte(&pixels_buffer[i].colours[GREEN], (uint24_t*)(&symbols_buffer[j]));
         convert_byte(&pixels_buffer[i].colours[BLUE],  (uint24_t*)(&symbols_buffer[j + 6]));
         j += 9;
     }
-    for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
+    for(i = PIXELS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
         symbols_buffer[i] = 0;
     }
 }
@@ -337,7 +406,7 @@ static void convert_byte(const uint8_t *in, uint24_t *out){
 
 void write_pixels(uint8_t red, uint8_t green, uint8_t blue){
     int i;
-    for(i = 0; i < LEDS; ++i){
+    for(i = 0; i < PIXELS; ++i){
         pixels_buffer[i].colours[RED]   = red;
         pixels_buffer[i].colours[GREEN] = green;
         pixels_buffer[i].colours[BLUE]  = blue;
@@ -347,7 +416,7 @@ void write_pixels(uint8_t red, uint8_t green, uint8_t blue){
 
 void write_symbols(int colour){
     int i;
-    for (i = 0; i < LEDS * PIXEL_COLOURS * 3;) {
+    for (i = 0; i < PIXELS * PIXEL_COLOURS * 3;) {
         // converted 24 bits to symbols
         symbols_buffer[i++] = (colour == GREEN) ? 0xDA : 0x92;
         symbols_buffer[i++] = (colour == GREEN) ? 0x4D : 0x49;
@@ -361,7 +430,7 @@ void write_symbols(int colour){
         symbols_buffer[i++] = (colour == BLUE) ? 0x4D : 0x49;
         symbols_buffer[i++] = 0x24;
     }
-    for(i = LEDS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
+    for(i = PIXELS * PIXEL_COLOURS * 3; i < LED_BYTES_COUNT; ++i){
         symbols_buffer[i] = 0;
     }
 }
