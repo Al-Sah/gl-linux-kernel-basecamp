@@ -1,0 +1,38 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
+
+    fragment@0 {
+        target = <&spidev0>;
+        __overlay__ {
+            status = "disabled";
+        };
+    };
+    fragment@1 {
+        target = <&spidev1>;
+        __overlay__ {
+            status = "disabled";
+        };
+    };
+
+    fragment@2 {
+        target = <&spi0>;
+        __overlay__ {
+        	/* needed to avoid dtc warning */
+        	#address-cells = <1>;
+        	#size-cells = <0>;
+
+            status = "okay";
+			rpi_ws2812matrix_master: ws2812matrix64@0 {
+				compatible = "rpi_ws2812matrix_master";
+				reg = <0>;
+				reset_us = <55>;
+				symbol_ns = <1250>;
+				colours = <3>;
+				/*device-name = "ws2812matrix64"; */
+			};
+        };
+    };
+};
