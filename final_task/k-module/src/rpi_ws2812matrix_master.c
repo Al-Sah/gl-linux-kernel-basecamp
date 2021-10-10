@@ -5,6 +5,8 @@
 #include <linux/proc_fs.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
+#include <linux/of.h>
+
 #include "../matrix_control.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -104,6 +106,48 @@ static struct frame_buffer_t *frame;
 static struct pixel_t* pixels_buffer = NULL;
 
 
+static const struct spi_device_id ws2812matrix_id_table [] = {
+        { "ws2812matrix64", 0 },
+        { "rpi_ws2812matrix_master", 0 },
+        { }
+};
+MODULE_DEVICE_TABLE(spi, ws2812matrix_id_table);
+
+static int ws2812matrix_probe(struct spi_device *spi);
+static int ws2812matrix_remove(struct spi_device *spi);
+
+static struct spi_driver ws2812matrix_spi_driver = {
+        .driver = {
+                .name   = "rpi_ws2812matrix_master",
+                .owner  = THIS_MODULE,
+        },
+        .probe  = ws2812matrix_probe,
+        .remove = ws2812matrix_remove,
+        .id_table = ws2812matrix_id_table,
+};
+
+static int ws2812matrix_probe(struct spi_device *spi){
+
+    int reset_us = 0, symbol_ns = 0;
+    struct device_node *node = spi->dev.of_node;
+    lcd_spi_device = spi;
+    lcd_spi_device->chip_select = 0;
+    lcd_spi_device->max_speed_hz = DEVICE_FREQUENCY;
+    lcd_spi_device->mode = SPI_MODE_0;
+
+    of_property_read_u32(node, "reset_us", &reset_us);
+    of_property_read_u32(node, "symbol_ns", &symbol_ns);
+
+    pr_info(MODULE_TAG "probe: reset_us : %d; symbol_ns : %d\n", reset_us, symbol_ns);
+    pr_info(MODULE_TAG "spi driver probed\n");
+    return 0;
+}
+
+static int ws2812matrix_remove(struct spi_device *spi){
+    pr_info(MODULE_TAG "spi driver removed\n");
+    return 0;
+}
+
 static int init_character_device(void){
     dev_t dev;
     pr_notice(MODULE_TAG "start cdev initialisation\n");
@@ -169,6 +213,10 @@ int init_sys_interface(void){
 static int __init led_matrix_controller_init(void){
 
     do{
+        if (spi_register_driver(&ws2812matrix_spi_driver)) {
+            printk(KERN_ERR "ws2812matrix_master: failed to register spi driver\n");
+            break;
+        }
         if(create_proc_entries() != 0){
             break;
         }
@@ -178,9 +226,12 @@ static int __init led_matrix_controller_init(void){
         if(init_character_device() != 0){
             break;
         }
-        if(init_spi_device() != 0){
-            break;
+        if (create_buffer((void *)&symbols_buffer, LED_BYTES_COUNT)) {
+            pr_err(MODULE_TAG "failed to create buffer\n");
         }
+/*        if(init_spi_device() != 0){
+            break;
+        }*/
         pr_notice(MODULE_TAG "spi device setup completed\n");
         if(init_frame_buffer() != 0){
             break;
@@ -209,6 +260,7 @@ static void on_exit(void){
     if (lcd_spi_device) {
         spi_unregister_device(lcd_spi_device);
     }
+
     unregister_chrdev_region(MKDEV(major, 0 ), 1 );
     device_destroy(led_matrix_controller, MKDEV(major, 0));
     class_remove_file( led_matrix_controller, &class_attr_brightness);
@@ -218,6 +270,7 @@ static void on_exit(void){
     clean_buffer((void *)&symbols_buffer);
     clean_buffer((void *)&pixels_buffer);
     clean_buffer((void *)&brightness_correction_table);
+    spi_unregister_driver(&ws2812matrix_spi_driver);
     if(frame){
         kfree(frame);
     }
@@ -240,6 +293,12 @@ static int init_spi_device(void){
         pr_err(MODULE_TAG "failed to find master; check if SPI enabled\n");
         return -1;
     }
+    struct device *dev;
+    char str[32];
+
+    snprintf(str, sizeof(str), "%s.%u", dev_name(&master->dev), 0);
+    dev = bus_find_device_by_name(&spi_bus_type, NULL, str);
+    pr_warn(MODULE_TAG "Module: %s\n", dev->of_node->name);
     lcd_spi_device = spi_new_device(master, &led_matrix_info);
     if (!lcd_spi_device) {
         pr_err(MODULE_TAG "failed to create slave\n");

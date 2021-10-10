@@ -28,6 +28,8 @@
 			rpi_ws2812matrix_master: ws2812matrix64@0 {
 				compatible = "rpi_ws2812matrix_master";
 				reg = <0>;
+				spi-max-frequency = <2400000>;
+				buswidth = <8>;
 				reset_us = <55>;
 				symbol_ns = <1250>;
 				colours = <3>;
