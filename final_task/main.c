@@ -3,7 +3,7 @@
 #include <malloc.h>
 #include <unistd.h>
 
-#include "k-module/matrix_controller.h"
+#include "k-module/matrix_control.h"
 const char* filename = "/dev/matrix_pixels";
 
 

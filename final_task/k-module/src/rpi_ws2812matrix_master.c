@@ -5,7 +5,7 @@
 #include <linux/proc_fs.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
-#include "../matrix_controller.h"
+#include "../matrix_control.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Al_Sah");
