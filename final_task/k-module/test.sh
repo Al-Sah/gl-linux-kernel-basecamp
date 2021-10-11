@@ -6,12 +6,12 @@ if [ -d "$(pwd)/build" ]; then
     cd "build" || exit
 fi
 
-sudo insmod matrix_controller.ko
+sudo insmod rpi_ws2812matrix_master.ko
 
 sudo insmod mod_test.ko &> /dev/null
 sleep 2
 sudo insmod mod_test.ko &> /dev/null
 
-sudo rmmod matrix_controller.ko
+sudo rmmod rpi_ws2812matrix_master.ko
 
 cd ..
