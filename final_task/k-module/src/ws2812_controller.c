@@ -418,11 +418,12 @@ static void update_brightness_table(void){
 
 void write_pixels(uint8_t red, uint8_t green, uint8_t blue){
     int i;
-    for(i = 0; i <  ws2812_device.pixels; ++i){
+    for(i = 0; i < ws2812_device.pixels; ++i){
         pixels_buffer[i].colours[RED]   = red;
         pixels_buffer[i].colours[GREEN] = green;
         pixels_buffer[i].colours[BLUE]  = blue;
     }
+    validate_brightness();
     convert_pixels_to_symbols();
 }
 
