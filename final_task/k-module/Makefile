@@ -3,9 +3,9 @@ ifeq ($(KERNEL_DIR),)
 	KERNEL_DIR = /lib/modules/$(shell uname -r)/build
 endif
 
-TARGET1 = rpi_ws2812matrix_master
+TARGET1 = ws2812_controller
 TARGET2 = mod_test
-TREE_FILE = rpi_ws2812matrix
+TREE_FILE = ws2812_controller
 
 PROJECT_DIR=$(shell pwd)
 

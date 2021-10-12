@@ -25,15 +25,18 @@
         	#size-cells = <0>;
 
             status = "okay";
-			rpi_ws2812matrix_master: ws2812matrix64@0 {
-				compatible = "rpi_ws2812matrix_master";
+			ws2812_controller: ws2812matrix64@0 {
+				compatible = "ws2812_controller";
+				device-name = "ws2812matrix64";
 				reg = <0>;
 				spi-max-frequency = <2400000>;
 				buswidth = <8>;
+
 				reset_us = <55>;
 				symbol_ns = <1250>;
 				colours = <3>;
-				/*device-name = "ws2812matrix64"; */
+				pixels = <64>;
+				sequence = "gbr";
 			};
         };
     };
